@@ -107,7 +107,7 @@ export function LeftSidebar() {
   const rootNodeId = useAppSelector(
     (state) => state.builderDocument.rootNodeIdsByPage[activePageId],
   );
-  const selectedIds = useAppSelector((state) => state.selection.selectedIds);
+  const activeNodeId = useAppSelector((state) => state.selection.activeNodeId);
   const filteredComponents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return BUILDER_COMPONENTS.filter(
@@ -132,7 +132,7 @@ export function LeftSidebar() {
       return;
     }
 
-    const selectedParentId = selectedIds[0] ?? rootNodeId;
+    const selectedParentId = activeNodeId ?? rootNodeId;
     const selectedParent = nodes[selectedParentId];
     const fallbackParent = nodes[rootNodeId];
 

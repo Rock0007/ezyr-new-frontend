@@ -9,6 +9,7 @@ import {
   readPropertyValue,
 } from "@/features/builder/property-panel";
 import { hydrateAppNode } from "@/features/builder/state/normalization";
+import { selectActiveSelectedNode } from "@/features/builder/state/selectors";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { propertyRegistry } from "@/registry/property";
@@ -26,9 +27,9 @@ export function PropertyPanel() {
   const isCollapsed = useAppSelector(
     (state) => state.builder.isRightPanelCollapsed,
   );
-  const selectedIds = useAppSelector((state) => state.selection.selectedIds);
   const nodes = useAppSelector((state) => state.builderDocument.nodes);
-  const selectedNode = selectedIds.length === 1 ? nodes[selectedIds[0]] : null;
+  const selectedNode = useAppSelector(selectActiveSelectedNode);
+  const selectedCount = useAppSelector((state) => state.selection.selectedIds.length);
   const selectedAppNode = selectedNode
     ? hydrateAppNode(selectedNode.id, nodes)
     : null;
@@ -122,7 +123,7 @@ export function PropertyPanel() {
               >
                 <div className="mb-2 rounded-md border border-[#d8dee9] bg-[#f8fafc] px-3 py-2">
                   <Typography.Text className="block text-[11px] font-medium text-[#667085]">
-                    Selected
+                    {selectedCount > 1 ? `${selectedCount} selected` : "Selected"}
                   </Typography.Text>
                   <Typography.Text className="block truncate text-sm font-semibold leading-5 text-[#172033]">
                     {selectedAppNode.type} / {selectedAppNode.id}

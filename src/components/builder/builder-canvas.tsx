@@ -24,10 +24,21 @@ import {
   getViewportCenter,
 } from "@/features/builder/canvas";
 import { BUILDER_CANVAS_DROP_ZONE_ID } from "@/features/builder/dnd";
+import {
+  getSelectableSiblingIds,
+  normalizeMarqueeSelection,
+  resolveSelectionClick,
+} from "@/features/builder/selection";
+import {
+  collectSubtreeIds,
+  isDescendantOf,
+} from "@/features/builder/state/normalization";
 import { selectActiveRootNode } from "@/features/builder/state/selectors";
+import { resolveShortcut } from "@/features/builder/shortcuts";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { rendererRegistry } from "@/registry/renderer";
+import { applyBuilderCommand } from "@/store/slices/builder-document-slice";
 import {
   resetCanvasViewport,
   setCanvasPan,
@@ -35,7 +46,17 @@ import {
   toggleGrid,
   toggleSnapToGrid,
 } from "@/store/slices/builder-slice";
-import { selectOne, setHoveredId } from "@/store/slices/selection-slice";
+import {
+  applySelection,
+  clearSelection,
+  removeSelectedIds,
+  selectOne,
+  setFocusedNodeId,
+  setHoveredId,
+  setSelection,
+  setSelectionBounds,
+  setSelectionMode,
+} from "@/store/slices/selection-slice";
 import { cn } from "@/utils/cn";
 
 const viewportWidthPx = {
@@ -49,9 +70,11 @@ type EditableNodeProps = {
   rootNodeId: string;
   selectedIds: readonly string[];
   hoveredId: string | null;
+  focusedNodeId: string | null;
   dropTargetId: string | null;
   isDropValid: boolean;
-  onSelect: (nodeId: string) => void;
+  onSelect: (nodeId: string, event: MouseEvent<HTMLDivElement>) => void;
+  onFocusNode: (nodeId: string) => void;
   onHover: (nodeId: string | null) => void;
 };
 
@@ -60,9 +83,11 @@ const EditableNode = memo(function EditableNode({
   rootNodeId,
   selectedIds,
   hoveredId,
+  focusedNodeId,
   dropTargetId,
   isDropValid,
   onSelect,
+  onFocusNode,
   onHover,
 }: EditableNodeProps) {
   const isRoot = node.id === rootNodeId;
@@ -95,9 +120,11 @@ const EditableNode = memo(function EditableNode({
       rootNodeId={rootNodeId}
       selectedIds={selectedIds}
       hoveredId={hoveredId}
+      focusedNodeId={focusedNodeId}
       dropTargetId={dropTargetId}
       isDropValid={isDropValid}
       onSelect={onSelect}
+      onFocusNode={onFocusNode}
       onHover={onHover}
     />
   ));
@@ -109,7 +136,19 @@ const EditableNode = memo(function EditableNode({
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    onSelect(node.id);
+    onSelect(node.id, event);
+  };
+  const handleFocus = () => {
+    onFocusNode(node.id);
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onFocusNode(node.id);
   };
   const dragProps = isRoot ? {} : { ...listeners, ...attributes };
 
@@ -120,8 +159,12 @@ const EditableNode = memo(function EditableNode({
         "builder-editable-node group relative rounded-sm outline-offset-2 transition",
         !isRoot && "cursor-grab active:cursor-grabbing",
         selectedIds.includes(node.id) && "outline outline-2 outline-[#0f8ca8]",
+        focusedNodeId === node.id &&
+          !selectedIds.includes(node.id) &&
+          "outline outline-1 outline-[#5fd1e5]",
         hoveredId === node.id &&
           !selectedIds.includes(node.id) &&
+          focusedNodeId !== node.id &&
           "outline outline-1 outline-[#8bd9e7]",
         (isOver || dropTargetId === node.id) &&
           (isDropValid
@@ -133,6 +176,8 @@ const EditableNode = memo(function EditableNode({
       role="button"
       tabIndex={0}
       onClick={handleClick}
+      onFocus={handleFocus}
+      onKeyDown={handleKeyDown}
       onMouseEnter={() => onHover(node.id)}
       onMouseLeave={() => onHover(null)}
       {...dragProps}
@@ -151,6 +196,10 @@ export function BuilderCanvas() {
     pan: { x: number; y: number };
     moved: boolean;
   } | null>(null);
+  const marqueeSessionRef = useRef<{
+    pointerId: number;
+    start: { x: number; y: number };
+  } | null>(null);
   const suppressNextClickRef = useRef(false);
   const isSpacePressedRef = useRef(false);
   const [isPanning, setIsPanning] = useState(false);
@@ -168,7 +217,13 @@ export function BuilderCanvas() {
   } = useAppSelector((state) => state.builder);
   const activeRootNode = useAppSelector(selectActiveRootNode);
   const selectedIds = useAppSelector((state) => state.selection.selectedIds);
+  const selectionState = useAppSelector((state) => state.selection);
   const hoveredId = useAppSelector((state) => state.selection.hoveredId);
+  const focusedNodeId = useAppSelector((state) => state.selection.focusedNodeId);
+  const selectionBounds = useAppSelector(
+    (state) => state.selection.selectionBounds,
+  );
+  const nodes = useAppSelector((state) => state.builderDocument.nodes);
   const dropIndicator = useAppSelector(
     (state) => state.builderDocument.dropIndicator,
   );
@@ -188,6 +243,69 @@ export function BuilderCanvas() {
       setCanvasDropRef(node);
     },
     [setCanvasDropRef],
+  );
+
+  const getViewportLocalPoint = useCallback(
+    (point: { x: number; y: number }) => {
+      const viewportElement = viewportElementRef.current;
+      const rect = viewportElement?.getBoundingClientRect();
+
+      if (!rect) {
+        return { x: point.x, y: point.y };
+      }
+
+      return { x: point.x - rect.left, y: point.y - rect.top };
+    },
+    [],
+  );
+
+  const getSelectionBounds = useCallback(
+    (start: { x: number; y: number }, end: { x: number; y: number }) => ({
+      left: Math.min(start.x, end.x),
+      top: Math.min(start.y, end.y),
+      width: Math.abs(start.x - end.x),
+      height: Math.abs(start.y - end.y),
+    }),
+    [],
+  );
+
+  const getNodesInsideBounds = useCallback(
+    (bounds: { left: number; top: number; width: number; height: number }) => {
+      const viewportElement = viewportElementRef.current;
+      const viewportRect = viewportElement?.getBoundingClientRect();
+
+      if (!viewportElement || !viewportRect) {
+        return [];
+      }
+
+      const selectionRect = {
+        left: viewportRect.left + bounds.left,
+        right: viewportRect.left + bounds.left + bounds.width,
+        top: viewportRect.top + bounds.top,
+        bottom: viewportRect.top + bounds.top + bounds.height,
+      };
+
+      return Array.from(
+        viewportElement.querySelectorAll<HTMLElement>("[data-node-id]"),
+      )
+        .map((element) => ({
+          id: element.dataset.nodeId,
+          rect: element.getBoundingClientRect(),
+        }))
+        .filter(
+          (entry): entry is { id: string; rect: DOMRect } =>
+            Boolean(entry.id) && entry.id !== rootNodeId,
+        )
+        .filter(
+          ({ rect }) =>
+            rect.left < selectionRect.right &&
+            rect.right > selectionRect.left &&
+            rect.top < selectionRect.bottom &&
+            rect.bottom > selectionRect.top,
+        )
+        .map(({ id }) => id);
+    },
+    [rootNodeId],
   );
 
   const zoomToPoint = useCallback(
@@ -306,7 +424,77 @@ export function BuilderCanvas() {
     };
   }, []);
 
+  const deleteSelectedNodes = useCallback(() => {
+    if (!rootNodeId || selectedIds.length === 0) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedIds);
+    const deletableIds = selectedIds.filter((nodeId) => {
+      const node = nodes[nodeId];
+
+      if (!node || node.id === rootNodeId || node.parentId === null) {
+        return false;
+      }
+
+      return !selectedIds.some(
+        (candidateId) =>
+          candidateId !== nodeId &&
+          selectedSet.has(candidateId) &&
+          isDescendantOf(nodeId, candidateId, nodes),
+      );
+    });
+    const removedIds = deletableIds.flatMap((nodeId) =>
+      collectSubtreeIds(nodeId, nodes),
+    );
+    const fallbackParentId = nodes[deletableIds[0] ?? ""]?.parentId ?? rootNodeId;
+
+    deletableIds.forEach((nodeId) => {
+      dispatch(applyBuilderCommand({ type: "delete-node", nodeId }));
+    });
+
+    dispatch(removeSelectedIds(removedIds));
+
+    if (fallbackParentId && nodes[fallbackParentId]) {
+      dispatch(selectOne(fallbackParentId));
+    }
+  }, [dispatch, nodes, rootNodeId, selectedIds]);
+
   const handleCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const shortcut = resolveShortcut(event.nativeEvent);
+
+    if (shortcut === "clear-selection") {
+      event.preventDefault();
+      dispatch(clearSelection());
+      return;
+    }
+
+    if (shortcut === "delete") {
+      event.preventDefault();
+      deleteSelectedNodes();
+      return;
+    }
+
+    if (shortcut === "select-all") {
+      event.preventDefault();
+      const selectableIds = getSelectableSiblingIds(
+        nodes,
+        selectionState.activeNodeId,
+        rootNodeId,
+      );
+
+      dispatch(
+        setSelection({
+          activeNodeId: selectableIds.at(-1) ?? null,
+          focusedNodeId: selectableIds.at(-1) ?? null,
+          lastSelectedNodeId: selectableIds.at(-1) ?? null,
+          selectedIds: selectableIds,
+          selectionMode: selectableIds.length > 1 ? "multi" : "single",
+        }),
+      );
+      return;
+    }
+
     const isZoomShortcut = event.ctrlKey || event.metaKey;
 
     if (event.key === " " || event.code === "Space") {
@@ -338,6 +526,27 @@ export function BuilderCanvas() {
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 1 && !isSpacePressedRef.current) {
+      if (event.button === 0) {
+        const target = event.target as HTMLElement;
+        const isEmptyCanvas =
+          event.currentTarget === target || !target.closest("[data-node-id]");
+
+        if (isEmptyCanvas) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const start = getViewportLocalPoint({
+            x: event.clientX,
+            y: event.clientY,
+          });
+
+          marqueeSessionRef.current = { pointerId: event.pointerId, start };
+          dispatch(clearSelection());
+          dispatch(setSelectionMode("marquee"));
+          dispatch(
+            setSelectionBounds({ left: start.x, top: start.y, width: 0, height: 0 }),
+          );
+        }
+      }
+
       return;
     }
 
@@ -354,6 +563,33 @@ export function BuilderCanvas() {
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const marqueeSession = marqueeSessionRef.current;
+
+    if (marqueeSession?.pointerId === event.pointerId) {
+      const current = getViewportLocalPoint({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const bounds = getSelectionBounds(marqueeSession.start, current);
+      const nodeIds = normalizeMarqueeSelection(
+        getNodesInsideBounds(bounds),
+        nodes,
+      );
+      const activeNodeId = nodeIds.at(-1) ?? null;
+
+      dispatch(
+        setSelection({
+          activeNodeId,
+          focusedNodeId: activeNodeId,
+          lastSelectedNodeId: activeNodeId,
+          selectedIds: nodeIds,
+          selectionMode: "marquee",
+        }),
+      );
+      dispatch(setSelectionBounds(bounds));
+      return;
+    }
+
     const session = panSessionRef.current;
 
     if (!session || session.pointerId !== event.pointerId) {
@@ -378,6 +614,25 @@ export function BuilderCanvas() {
   };
 
   const endPanSession = (event: PointerEvent<HTMLDivElement>) => {
+    const marqueeSession = marqueeSessionRef.current;
+
+    if (marqueeSession?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      marqueeSessionRef.current = null;
+      suppressNextClickRef.current = true;
+      dispatch(setSelectionBounds(null));
+      dispatch(
+        setSelectionMode(
+          selectedIds.length === 0
+            ? "none"
+            : selectedIds.length === 1
+              ? "single"
+              : "multi",
+        ),
+      );
+      return;
+    }
+
     const session = panSessionRef.current;
 
     if (!session || session.pointerId !== event.pointerId) {
@@ -396,10 +651,27 @@ export function BuilderCanvas() {
       return;
     }
 
-    if (rootNodeId) {
-      dispatch(selectOne(rootNodeId));
-    }
+    dispatch(clearSelection());
   };
+
+  const handleNodeSelect = useCallback(
+    (nodeId: string, event: MouseEvent<HTMLDivElement>) => {
+      const result = resolveSelectionClick({
+        nodeId,
+        modifiers: {
+          altKey: event.altKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+        },
+        nodes,
+        state: selectionState,
+      });
+
+      dispatch(applySelection(result));
+    },
+    [dispatch, nodes, selectionState],
+  );
 
   const canvasStyle = useMemo(
     () => ({
@@ -517,6 +789,18 @@ export function BuilderCanvas() {
           </div>
         )}
 
+        {selectionBounds && (
+          <div
+            className="pointer-events-none absolute z-40 rounded-sm border border-[#0f8ca8] bg-[#18a8c7]/10"
+            style={{
+              height: selectionBounds.height,
+              left: selectionBounds.left,
+              top: selectionBounds.top,
+              width: selectionBounds.width,
+            }}
+          />
+        )}
+
         <div
           className="absolute left-0 top-0 z-10"
           style={{
@@ -534,9 +818,11 @@ export function BuilderCanvas() {
                 rootNodeId={rootNodeId}
                 selectedIds={selectedIds}
                 hoveredId={hoveredId}
+                focusedNodeId={focusedNodeId}
                 dropTargetId={dropTargetId}
                 isDropValid={dropIndicator?.isValid ?? true}
-                onSelect={(nodeId) => dispatch(selectOne(nodeId))}
+                onSelect={handleNodeSelect}
+                onFocusNode={(nodeId) => dispatch(setFocusedNodeId(nodeId))}
                 onHover={(nodeId) => dispatch(setHoveredId(nodeId))}
               />
             ) : (

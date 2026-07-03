@@ -22,7 +22,9 @@ import {
   Tablet,
   Undo2,
 } from "lucide-react";
+import Image from "next/image";
 import type { ReactNode } from "react";
+import ezyrLogo from "@/app/ezyr_logo.png";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import {
@@ -50,21 +52,39 @@ export function TopToolbar() {
   const { activeProject, isDirty } = useAppSelector((state) => state.project);
 
   return (
-    <Layout.Header className="ezyr-panel z-10 grid h-14 grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] items-center gap-3 border-b px-3">
-      <div className="flex min-w-0 items-center gap-2">
+    <Layout.Header className="ezyr-panel z-10 grid h-14 grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)] items-center gap-3 border-b !px-0">
+      <div className="flex min-w-0 items-center">
         <Tooltip
           title={
             isLeftPanelCollapsed ? "Expand left panel" : "Collapse left panel"
           }
         >
-          <Button
+          <button
             aria-label="Toggle left panel"
-            icon={<PanelLeft size={16} />}
-            type={isLeftPanelCollapsed ? "primary" : "text"}
+            className={[
+              "group relative grid h-14 w-[69px] shrink-0 place-items-center overflow-hidden bg-white transition",
+              "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18a8c7] focus-visible:ring-inset",
+              isLeftPanelCollapsed
+                ? "text-[#0f8ca8]"
+                : "text-[#172033] hover:bg-[#f8fafc]",
+            ].join(" ")}
+            type="button"
             onClick={() => dispatch(toggleLeftPanel())}
-          />
+          >
+            <Image
+              alt="Ezyr"
+              className="h-8 w-8 object-contain transition duration-150 group-hover:scale-95 group-hover:opacity-0 group-focus-visible:opacity-0"
+              height={32}
+              priority
+              src={ezyrLogo}
+              width={32}
+            />
+            <span className="absolute inset-0 grid place-items-center text-[#172033] opacity-0 transition duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+              <PanelLeft size={16} />
+            </span>
+          </button>
         </Tooltip>
-        <div className="flex min-w-0 flex-col leading-tight">
+        <div className="flex min-w-0 flex-col px-3 leading-tight">
           <Typography.Text className="text-sm font-semibold text-[#172033]">
             Ezyr
           </Typography.Text>
@@ -102,7 +122,7 @@ export function TopToolbar() {
         />
       </div>
 
-      <div className="flex min-w-0 items-center justify-end gap-1">
+      <div className="flex min-w-0 items-center justify-end gap-1 pr-2">
         <Tooltip title="Undo">
           <Button aria-label="Undo" icon={<Undo2 size={16} />} type="text" />
         </Tooltip>

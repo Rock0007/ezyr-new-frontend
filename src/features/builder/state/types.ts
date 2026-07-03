@@ -11,10 +11,18 @@ export type NormalizedBuilderNode = {
   events: Record<string, JsonValue>;
 };
 
+export type BuilderPage = {
+  id: string;
+  name: string;
+  path: string;
+};
+
 export type BuilderDocumentState = {
   appId: string;
   activePageId: string;
-  rootNodeIdsByPage: Record<string, string>;
+  pagesById: Record<string, BuilderPage>;
+  pageOrder: string[];
+  rootNodeIdsByPage: Record<string, string | null>;
   nodes: Record<string, NormalizedBuilderNode>;
   clipboard: BuilderClipboard | null;
   dragSession: BuilderDragSession | null;
@@ -55,6 +63,7 @@ export type DropIndicator = {
 
 export type BuilderCommand =
   | { type: "insert-node"; node: AppNode; parentId: string; index?: number }
+  | { type: "set-page-root"; pageId: string; node: AppNode }
   | { type: "delete-node"; nodeId: string }
   | { type: "move-node"; nodeId: string; parentId: string; index: number }
   | { type: "reorder-node"; nodeId: string; parentId: string; index: number }

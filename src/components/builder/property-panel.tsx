@@ -43,6 +43,12 @@ export function PropertyPanel() {
           ),
       )
     : [];
+  const defaultActivePropertyGroups = propertyGroups
+    .filter(
+      (group, index) =>
+        index < 4 || group.category === "Scroll" || group.category === "Layout",
+    )
+    .map((group) => group.category);
 
   const updateProperty = (
     propertySource: PropertySource,
@@ -131,9 +137,7 @@ export function PropertyPanel() {
                 </div>
                 <Collapse
                   className="builder-properties-collapse"
-                  defaultActiveKey={propertyGroups
-                    .slice(0, 4)
-                    .map((group) => group.category)}
+                  defaultActiveKey={defaultActivePropertyGroups}
                   ghost
                   items={propertyGroups.map((group) => ({
                     key: group.category,

@@ -66,6 +66,7 @@ function BooleanEditor({ value, onChange }: PropertyEditorProps) {
 function SelectEditor({ value, options, onChange }: PropertyEditorProps) {
   return (
     <Select
+      className="w-full!"
       size="small"
       value={typeof value === "string" ? value : undefined}
       options={options?.map((option) => ({

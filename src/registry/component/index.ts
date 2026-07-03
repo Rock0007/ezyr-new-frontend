@@ -23,7 +23,7 @@ export class ComponentRegistry extends TypedRegistry<ComponentDefinition> {
       id,
       type,
       props: definition.defaultProps,
-      style: {},
+      style: definition.defaultStyle ?? {},
       bindings: {},
       events: {},
       children: [],

@@ -128,7 +128,25 @@ export function LeftSidebar() {
   );
 
   const insertComponent = (componentType: string) => {
+    const nodeId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : createLocalNodeId(componentType);
+
     if (!rootNodeId) {
+      if (componentType !== "Frame") {
+        return;
+      }
+
+      const node = componentRegistry.createNode(componentType, nodeId);
+      dispatch(
+        applyBuilderCommand({
+          type: "set-page-root",
+          pageId: activePageId,
+          node,
+        }),
+      );
+      dispatch(selectOne(node.id));
       return;
     }
 
@@ -140,10 +158,6 @@ export function LeftSidebar() {
       return;
     }
 
-    const nodeId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : createLocalNodeId(componentType);
     const plan = createDropPlan({
       payload: { kind: "new-component", componentType },
       nodes,

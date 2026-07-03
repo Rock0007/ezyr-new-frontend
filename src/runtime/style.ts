@@ -12,16 +12,28 @@ const stylePropertyMap: Record<string, keyof CSSProperties> = {
   gap: "gap",
   height: "height",
   margin: "margin",
+  maxHeight: "maxHeight",
   maxWidth: "maxWidth",
   minHeight: "minHeight",
+  minWidth: "minWidth",
+  overflow: "overflow",
+  overflowX: "overflowX",
+  overflowY: "overflowY",
   padding: "padding",
   radius: "borderRadius",
+  scrollBehavior: "scrollBehavior",
   width: "width",
 };
 
 function resolveStyleValue(value: JsonValue): string | number | undefined {
   if (typeof value === "string") {
-    return themeRegistry.resolveToken(value) ?? value;
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return undefined;
+    }
+
+    return themeRegistry.resolveToken(trimmed) ?? trimmed;
   }
 
   if (typeof value === "number") {

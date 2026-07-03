@@ -10,6 +10,7 @@ import type {
   BuilderCommand,
   BuilderClipboard,
   BuilderDragSession,
+  BuilderPage,
   DropIndicator,
 } from "@/features/builder/state/types";
 
@@ -33,6 +34,17 @@ type UpdateNodePropsPayload = {
 type UpdateNodeStylePayload = {
   nodeId: string;
   style: JsonObject;
+};
+
+type CreatePagePayload = {
+  page: BuilderPage;
+  rootNode: AppNode;
+};
+
+type RenamePagePayload = {
+  pageId: string;
+  name: string;
+  path: string;
 };
 
 function insertChildId(
@@ -77,13 +89,27 @@ const builderDocumentSlice = createSlice({
     deleteNode: (state, action: PayloadAction<string>) => {
       const node = state.nodes[action.payload];
 
-      if (!node || node.parentId === null) {
+      if (!node) {
+        return;
+      }
+
+      if (node.parentId === null) {
+        const activeRootId = state.rootNodeIdsByPage[state.activePageId];
+
+        if (activeRootId !== node.id) {
+          return;
+        }
+
+        collectSubtreeIds(node.id, state.nodes).forEach((nodeId) => {
+          delete state.nodes[nodeId];
+        });
+        state.rootNodeIdsByPage[state.activePageId] = null;
         return;
       }
 
       const parent = state.nodes[node.parentId];
       if (parent) {
-        parent.childIds = parent.childIds.filter((id) => id !== node.id);
+        removeChildId(parent.childIds, node.id);
       }
 
       collectSubtreeIds(node.id, state.nodes).forEach((nodeId) => {
@@ -123,6 +149,65 @@ const builderDocumentSlice = createSlice({
       node.parentId = nextParent.id;
       insertChildId(nextParent.childIds, node.id, targetIndex);
     },
+    createPage: (state, action: PayloadAction<CreatePagePayload>) => {
+      if (state.pagesById[action.payload.page.id]) {
+        return;
+      }
+
+      state.pagesById[action.payload.page.id] = action.payload.page;
+      state.pageOrder.push(action.payload.page.id);
+      state.rootNodeIdsByPage[action.payload.page.id] =
+        action.payload.rootNode.id;
+      Object.assign(
+        state.nodes,
+        normalizeAppNode(action.payload.rootNode, null),
+      );
+      state.activePageId = action.payload.page.id;
+    },
+    setActivePage: (state, action: PayloadAction<string>) => {
+      if (!state.pagesById[action.payload]) {
+        return;
+      }
+
+      state.activePageId = action.payload;
+      state.dropIndicator = null;
+      state.dragSession = null;
+    },
+    renamePage: (state, action: PayloadAction<RenamePagePayload>) => {
+      const page = state.pagesById[action.payload.pageId];
+
+      if (!page) {
+        return;
+      }
+
+      page.name = action.payload.name.trim() || page.name;
+      page.path = action.payload.path.trim() || page.path;
+    },
+    deletePage: (state, action: PayloadAction<string>) => {
+      if (!state.pagesById[action.payload] || state.pageOrder.length <= 1) {
+        return;
+      }
+
+      const pageIndex = state.pageOrder.indexOf(action.payload);
+      const rootNodeId = state.rootNodeIdsByPage[action.payload];
+
+      if (rootNodeId) {
+        collectSubtreeIds(rootNodeId, state.nodes).forEach((nodeId) => {
+          delete state.nodes[nodeId];
+        });
+      }
+
+      delete state.pagesById[action.payload];
+      delete state.rootNodeIdsByPage[action.payload];
+      state.pageOrder = state.pageOrder.filter(
+        (pageId) => pageId !== action.payload,
+      );
+
+      if (state.activePageId === action.payload) {
+        state.activePageId =
+          state.pageOrder[Math.max(0, pageIndex - 1)] ?? state.pageOrder[0];
+      }
+    },
     applyBuilderCommand: (state, action: PayloadAction<BuilderCommand>) => {
       const command = action.payload;
 
@@ -136,6 +221,22 @@ const builderDocumentSlice = createSlice({
         const normalized = normalizeAppNode(command.node, command.parentId);
         Object.assign(state.nodes, normalized);
         insertChildId(parent.childIds, command.node.id, command.index);
+        return;
+      }
+
+      if (command.type === "set-page-root") {
+        const previousRootId = state.rootNodeIdsByPage[command.pageId];
+
+        if (previousRootId) {
+          collectSubtreeIds(previousRootId, state.nodes).forEach((nodeId) => {
+            delete state.nodes[nodeId];
+          });
+        }
+
+        const normalized = normalizeAppNode(command.node, null);
+        Object.assign(state.nodes, normalized);
+        state.rootNodeIdsByPage[command.pageId] = command.node.id;
+        state.activePageId = command.pageId;
         return;
       }
 
@@ -177,7 +278,21 @@ const builderDocumentSlice = createSlice({
       if (command.type === "delete-node") {
         const node = state.nodes[command.nodeId];
 
-        if (!node || node.parentId === null) {
+        if (!node) {
+          return;
+        }
+
+        if (node.parentId === null) {
+          const activeRootId = state.rootNodeIdsByPage[state.activePageId];
+
+          if (activeRootId !== node.id) {
+            return;
+          }
+
+          collectSubtreeIds(node.id, state.nodes).forEach((nodeId) => {
+            delete state.nodes[nodeId];
+          });
+          state.rootNodeIdsByPage[state.activePageId] = null;
           return;
         }
 
@@ -245,11 +360,15 @@ const builderDocumentSlice = createSlice({
 
 export const {
   applyBuilderCommand,
+  createPage,
   deleteNode,
+  deletePage,
   insertNode,
   moveNode,
+  renamePage,
   resetDocument,
   setClipboard,
+  setActivePage,
   setDragSession,
   setDropIndicator,
   updateNodeProps,

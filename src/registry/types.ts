@@ -107,6 +107,7 @@ export type ComponentDefinition = {
   readonly taxonomy: ComponentTaxonomy;
   readonly version: string;
   readonly defaultProps: Record<string, JsonValue>;
+  readonly defaultStyle?: JsonObject;
   readonly editableProps: readonly string[];
   readonly events: readonly string[];
   readonly slots: readonly string[];

@@ -226,8 +226,24 @@ export function BuilderWorkspace() {
 
     queueAutoPan();
 
-    if (!payload || !overId || !rootNodeId) {
+    if (!payload || !overId) {
       dispatch(setDropIndicator(null));
+      return;
+    }
+
+    if (!rootNodeId) {
+      const canCreateRoot =
+        payload.kind === "new-component" && payload.componentType === "Frame";
+
+      dispatch(
+        setDropIndicator({
+          intent: null,
+          isValid: canCreateRoot,
+          message: canCreateRoot
+            ? undefined
+            : "Add a Frame before placing other components.",
+        }),
+      );
       return;
     }
 
@@ -264,7 +280,7 @@ export function BuilderWorkspace() {
     dispatch(setDragSession(null));
     dispatch(setDropIndicator(null));
 
-    if (!payload || !overId || !rootNodeId) {
+    if (!payload || !overId) {
       return;
     }
 
@@ -277,6 +293,24 @@ export function BuilderWorkspace() {
         ? crypto.randomUUID()
         : createDroppedNodeId(componentType)
       : "";
+
+    if (!rootNodeId) {
+      if (payload.kind !== "new-component" || payload.componentType !== "Frame") {
+        return;
+      }
+
+      const node = componentRegistry.createNode(payload.componentType, nodeId);
+      dispatch(
+        applyBuilderCommand({
+          type: "set-page-root",
+          pageId: activePageId,
+          node,
+        }),
+      );
+      dispatch(selectOne(node.id));
+      return;
+    }
+
     const plan = createDropPlan({
       payload,
       nodes,

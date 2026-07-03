@@ -24,6 +24,13 @@ export function createInsertExistingNodeCommand(
   return { type: "insert-node", node, parentId, index };
 }
 
+export function createSetPageRootCommand(
+  pageId: string,
+  node: AppNode,
+): BuilderCommand {
+  return { type: "set-page-root", pageId, node };
+}
+
 export function createDeleteNodeCommand(nodeId: string): BuilderCommand {
   return { type: "delete-node", nodeId };
 }

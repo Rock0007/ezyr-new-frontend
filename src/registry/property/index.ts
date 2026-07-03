@@ -7,6 +7,14 @@ export type ComponentPropertyDefinition = PropertyDefinition & {
   readonly componentType: string;
 };
 
+const overflowOptions = [
+  { label: "Visible", value: "visible" },
+  { label: "Auto", value: "auto" },
+  { label: "Scroll", value: "scroll" },
+  { label: "Hidden", value: "hidden" },
+  { label: "Clip", value: "clip" },
+] as const;
+
 const specializedProperties: readonly ComponentPropertyDefinition[] = [
   {
     id: "Button.text",
@@ -138,6 +146,110 @@ const specializedProperties: readonly ComponentPropertyDefinition[] = [
     valueSource: "style",
     valueKey: "padding",
     defaultValue: "0",
+  },
+  {
+    id: "Frame.scroll.minHeight",
+    componentType: "Frame",
+    label: "Minimum height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "minHeight",
+    defaultValue: "100vh",
+  },
+  {
+    id: "Frame.scroll.height",
+    componentType: "Frame",
+    label: "Height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "height",
+    defaultValue: "",
+  },
+  {
+    id: "Frame.scroll.maxHeight",
+    componentType: "Frame",
+    label: "Maximum height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "maxHeight",
+    defaultValue: "",
+  },
+  {
+    id: "Frame.scroll.overflowY",
+    componentType: "Frame",
+    label: "Vertical overflow",
+    editor: "select",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "overflowY",
+    defaultValue: "visible",
+    options: overflowOptions,
+  },
+  {
+    id: "Frame.scroll.overflowX",
+    componentType: "Frame",
+    label: "Horizontal overflow",
+    editor: "select",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "overflowX",
+    defaultValue: "hidden",
+    options: overflowOptions,
+  },
+  {
+    id: "Section.scroll.minHeight",
+    componentType: "Section",
+    label: "Minimum height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "minHeight",
+    defaultValue: "",
+  },
+  {
+    id: "Section.scroll.height",
+    componentType: "Section",
+    label: "Height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "height",
+    defaultValue: "",
+  },
+  {
+    id: "Section.scroll.maxHeight",
+    componentType: "Section",
+    label: "Maximum height",
+    editor: "spacing",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "maxHeight",
+    defaultValue: "",
+  },
+  {
+    id: "Section.scroll.overflowY",
+    componentType: "Section",
+    label: "Vertical overflow",
+    editor: "select",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "overflowY",
+    defaultValue: "visible",
+    options: overflowOptions,
+  },
+  {
+    id: "Section.scroll.overflowX",
+    componentType: "Section",
+    label: "Horizontal overflow",
+    editor: "select",
+    category: "Scroll",
+    valueSource: "style",
+    valueKey: "overflowX",
+    defaultValue: "hidden",
+    options: overflowOptions,
   },
 ];
 
@@ -277,11 +389,21 @@ const commonPropertyTemplates: readonly Omit<
 
 const generatedProperties: readonly ComponentPropertyDefinition[] =
   coreComponentDefinitions.flatMap((definition) =>
-    commonPropertyTemplates.map((property) => ({
-      ...property,
-      id: `${definition.id}.${property.valueSource}.${property.valueKey}`,
-      componentType: definition.id,
-    })),
+    commonPropertyTemplates
+      .filter(
+        (property) =>
+          !specializedProperties.some(
+            (specializedProperty) =>
+              specializedProperty.componentType === definition.id &&
+              specializedProperty.valueSource === property.valueSource &&
+              specializedProperty.valueKey === property.valueKey,
+          ),
+      )
+      .map((property) => ({
+        ...property,
+        id: `${definition.id}.${property.valueSource}.${property.valueKey}`,
+        componentType: definition.id,
+      })),
   );
 
 const properties: readonly ComponentPropertyDefinition[] = [

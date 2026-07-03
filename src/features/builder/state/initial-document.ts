@@ -6,7 +6,13 @@ export const initialRootNode: AppNode = {
   id: "home-root",
   type: "Frame",
   props: {},
-  style: { background: "#ffffff", padding: "0" },
+  style: {
+    background: "#ffffff",
+    minHeight: "100vh",
+    overflowX: "hidden",
+    overflowY: "visible",
+    padding: "0",
+  },
   bindings: {},
   events: {},
   children: [
@@ -44,6 +50,14 @@ export const initialRootNode: AppNode = {
 export const initialBuilderDocumentState: BuilderDocumentState = {
   appId: "ezyr-demo-project",
   activePageId: "home",
+  pagesById: {
+    home: {
+      id: "home",
+      name: "Home",
+      path: "/",
+    },
+  },
+  pageOrder: ["home"],
   rootNodeIdsByPage: { home: initialRootNode.id },
   nodes: normalizeAppNode(initialRootNode),
   clipboard: null,

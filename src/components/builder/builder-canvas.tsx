@@ -2,7 +2,7 @@
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Button, Tooltip, Typography } from "antd";
-import { Grid2X2, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { FilePlus2, Grid2X2, Maximize2, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -37,8 +37,14 @@ import { selectActiveRootNode } from "@/features/builder/state/selectors";
 import { resolveShortcut } from "@/features/builder/shortcuts";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
+import { componentRegistry } from "@/registry/component";
 import { rendererRegistry } from "@/registry/renderer";
-import { applyBuilderCommand } from "@/store/slices/builder-document-slice";
+import {
+  applyBuilderCommand,
+  createPage,
+  deletePage,
+  setActivePage,
+} from "@/store/slices/builder-document-slice";
 import {
   resetCanvasViewport,
   setCanvasPan,
@@ -64,6 +70,71 @@ const viewportWidthPx = {
   tablet: 720,
   mobile: 390,
 };
+
+let localPageSequence = 1;
+
+function createLocalId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  localPageSequence += 1;
+  return `${prefix}-${localPageSequence}`;
+}
+
+function canScrollInDirection(
+  element: HTMLElement,
+  axis: "x" | "y",
+  delta: number,
+): boolean {
+  const style = window.getComputedStyle(element);
+  const overflow =
+    axis === "y" ? style.overflowY : style.overflowX;
+  const allowsScroll = overflow === "auto" || overflow === "scroll";
+
+  if (!allowsScroll || delta === 0) {
+    return false;
+  }
+
+  if (axis === "y") {
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+
+    return maxScrollTop > 0 && (delta > 0
+      ? element.scrollTop < maxScrollTop
+      : element.scrollTop > 0);
+  }
+
+  const maxScrollLeft = element.scrollWidth - element.clientWidth;
+
+  return maxScrollLeft > 0 && (delta > 0
+    ? element.scrollLeft < maxScrollLeft
+    : element.scrollLeft > 0);
+}
+
+function hasScrollableWheelTarget(
+  target: EventTarget | null,
+  viewportElement: HTMLElement,
+  event: WheelEvent,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  let element: HTMLElement | null = target;
+
+  while (element && element !== viewportElement) {
+    if (
+      canScrollInDirection(element, "y", event.deltaY) ||
+      canScrollInDirection(element, "x", event.deltaX)
+    ) {
+      return true;
+    }
+
+    element = element.parentElement;
+  }
+
+  return false;
+}
 
 type EditableNodeProps = {
   node: AppNode;
@@ -230,9 +301,15 @@ export function BuilderCanvas() {
   const activePageId = useAppSelector(
     (state) => state.builderDocument.activePageId,
   );
+  const pagesById = useAppSelector((state) => state.builderDocument.pagesById);
+  const pageOrder = useAppSelector((state) => state.builderDocument.pageOrder);
   const rootNodeId = useAppSelector(
     (state) => state.builderDocument.rootNodeIdsByPage[activePageId],
   );
+  const rootNodeIdsByPage = useAppSelector(
+    (state) => state.builderDocument.rootNodeIdsByPage,
+  );
+  const activePage = pagesById[activePageId];
   const pageWidth = viewportWidthPx[viewport];
   const scale = zoom / 100;
   const gridPixelSize = Math.max(4, gridSize * scale);
@@ -375,9 +452,8 @@ export function BuilderCanvas() {
     }
 
     const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-
       if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
         zoomBy(event.deltaY > 0 ? -CANVAS_ZOOM_STEP : CANVAS_ZOOM_STEP, {
           x: event.clientX,
           y: event.clientY,
@@ -385,6 +461,11 @@ export function BuilderCanvas() {
         return;
       }
 
+      if (hasScrollableWheelTarget(event.target, viewportElement, event)) {
+        return;
+      }
+
+      event.preventDefault();
       dispatch(
         setCanvasPan({
           x: canvasPan.x - event.deltaX,
@@ -433,8 +514,12 @@ export function BuilderCanvas() {
     const deletableIds = selectedIds.filter((nodeId) => {
       const node = nodes[nodeId];
 
-      if (!node || node.id === rootNodeId || node.parentId === null) {
+      if (!node) {
         return false;
+      }
+
+      if (node.parentId === null) {
+        return node.id === rootNodeId;
       }
 
       return !selectedIds.some(
@@ -447,7 +532,10 @@ export function BuilderCanvas() {
     const removedIds = deletableIds.flatMap((nodeId) =>
       collectSubtreeIds(nodeId, nodes),
     );
-    const fallbackParentId = nodes[deletableIds[0] ?? ""]?.parentId ?? rootNodeId;
+    const deletesRoot = deletableIds.includes(rootNodeId);
+    const fallbackParentId = deletesRoot
+      ? null
+      : (nodes[deletableIds[0] ?? ""]?.parentId ?? rootNodeId);
 
     deletableIds.forEach((nodeId) => {
       dispatch(applyBuilderCommand({ type: "delete-node", nodeId }));
@@ -457,7 +545,10 @@ export function BuilderCanvas() {
 
     if (fallbackParentId && nodes[fallbackParentId]) {
       dispatch(selectOne(fallbackParentId));
+      return;
     }
+
+    dispatch(clearSelection());
   }, [dispatch, nodes, rootNodeId, selectedIds]);
 
   const handleCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -683,12 +774,121 @@ export function BuilderCanvas() {
     [canvasPan.x, canvasPan.y, gridPixelSize],
   );
 
+  const handleCreatePage = useCallback(() => {
+    const pageNumber = pageOrder.length + 1;
+    const pageId = createLocalId("page");
+    const rootId = createLocalId("frame");
+    const rootNode = componentRegistry.createNode("Frame", rootId);
+
+    dispatch(
+      createPage({
+        page: {
+          id: pageId,
+          name: `Page ${pageNumber}`,
+          path: `/page-${pageNumber}`,
+        },
+        rootNode,
+      }),
+    );
+    dispatch(selectOne(rootNode.id));
+  }, [dispatch, pageOrder.length]);
+
+  const handleSwitchPage = useCallback(
+    (pageId: string) => {
+      dispatch(setActivePage(pageId));
+
+      const nextRootNodeId = rootNodeIdsByPage[pageId];
+      if (nextRootNodeId) {
+        dispatch(selectOne(nextRootNodeId));
+        return;
+      }
+
+      dispatch(clearSelection());
+    },
+    [dispatch, rootNodeIdsByPage],
+  );
+
+  const handleDeleteActivePage = useCallback(() => {
+    if (pageOrder.length <= 1) {
+      return;
+    }
+
+    const activeIndex = pageOrder.indexOf(activePageId);
+    const nextPageId =
+      pageOrder[Math.max(0, activeIndex - 1)] ??
+      pageOrder.find((pageId) => pageId !== activePageId);
+
+    dispatch(deletePage(activePageId));
+
+    if (nextPageId) {
+      const nextRootNodeId = rootNodeIdsByPage[nextPageId];
+      if (nextRootNodeId) {
+        dispatch(selectOne(nextRootNodeId));
+        return;
+      }
+    }
+
+    dispatch(clearSelection());
+  }, [activePageId, dispatch, pageOrder, rootNodeIdsByPage]);
+
   return (
     <section className="relative flex h-full min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#d8dee9] bg-[#f8fafc] px-4">
-        <Typography.Text className="text-xs font-medium text-[#667085]">
-          Canvas / Home page
-        </Typography.Text>
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[#d8dee9] bg-[#f8fafc] px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <Typography.Text className="shrink-0 text-xs font-medium text-[#667085]">
+            Pages
+          </Typography.Text>
+          <div className="flex min-w-0 max-w-[520px] items-center gap-1 overflow-x-auto">
+            {pageOrder.map((pageId) => {
+              const page = pagesById[pageId];
+
+              if (!page) {
+                return null;
+              }
+
+              const isActive = page.id === activePageId;
+
+              return (
+                <button
+                  className={cn(
+                    "shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition",
+                    isActive
+                      ? "border-[#0f8ca8] bg-[#e6f6fa] text-[#08708a]"
+                      : "border-[#d8dee9] bg-white text-[#667085] hover:border-[#0f8ca8] hover:text-[#08708a]",
+                  )}
+                  key={page.id}
+                  type="button"
+                  onClick={() => handleSwitchPage(page.id)}
+                >
+                  {page.name}
+                </button>
+              );
+            })}
+          </div>
+          <Tooltip title="Add page">
+            <Button
+              aria-label="Add page"
+              icon={<FilePlus2 size={14} />}
+              size="small"
+              onClick={handleCreatePage}
+            />
+          </Tooltip>
+          <Tooltip
+            title={
+              pageOrder.length <= 1
+                ? "At least one page is required"
+                : `Delete ${activePage?.name ?? "page"}`
+            }
+          >
+            <Button
+              aria-label="Delete active page"
+              disabled={pageOrder.length <= 1}
+              icon={<Trash2 size={14} />}
+              size="small"
+              onClick={handleDeleteActivePage}
+            />
+          </Tooltip>
+        </div>
         <div className="flex items-center gap-1">
           <Tooltip title="Zoom out">
             <Button
@@ -826,8 +1026,16 @@ export function BuilderCanvas() {
                 onHover={(nodeId) => dispatch(setHoveredId(nodeId))}
               />
             ) : (
-              <div className="p-8 text-sm text-[#667085]">
-                No active page root found.
+              <div className="flex min-h-[420px] items-center justify-center p-8">
+                <div className="max-w-[280px] rounded-md border border-dashed border-[#cfd7e4] bg-[#f8fafc] px-4 py-3 text-center">
+                  <Typography.Text className="block text-sm font-semibold text-[#172033]">
+                    Add a Frame
+                  </Typography.Text>
+                  <Typography.Text className="mt-1 block text-xs leading-5 text-[#667085]">
+                    Drag a Frame here or double-click Frame in the component
+                    library to start this page.
+                  </Typography.Text>
+                </div>
               </div>
             )}
           </div>

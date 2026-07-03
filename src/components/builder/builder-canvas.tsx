@@ -1,10 +1,16 @@
 "use client";
 
+import { useDroppable } from "@dnd-kit/core";
 import { Button, Typography } from "antd";
-import { Maximize2, Minus, Plus } from "lucide-react";
+import { Grid2X2, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
+import type { AppNode } from "@/schemas/app-spec";
+import { selectActiveRootNode } from "@/features/builder/state/selectors";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
-import { setZoom } from "@/store/slices/builder-slice";
+import { rendererRegistry } from "@/registry/renderer";
+import { setZoom, toggleGrid } from "@/store/slices/builder-slice";
+import { selectOne } from "@/store/slices/selection-slice";
 import { cn } from "@/utils/cn";
 
 const viewportWidthClass = {
@@ -13,9 +19,64 @@ const viewportWidthClass = {
   mobile: "w-[390px]",
 };
 
+function EditableNode({
+  node,
+  selectedIds,
+  onSelect,
+}: {
+  node: AppNode;
+  selectedIds: readonly string[];
+  onSelect: (nodeId: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: node.id });
+  const renderer = rendererRegistry.get(node.type);
+  const children = node.children.map((child) => (
+    <EditableNode
+      key={child.id}
+      node={child}
+      selectedIds={selectedIds}
+      onSelect={onSelect}
+    />
+  ));
+  const rendered = renderer?.render(node, children) ?? (
+    <div data-ezyr-runtime-error="missing-renderer">
+      Missing renderer for {node.type}
+    </div>
+  );
+
+  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    onSelect(node.id);
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "builder-editable-node relative rounded-sm outline-offset-2 transition",
+        selectedIds.includes(node.id) && "outline outline-2 outline-[#0f8ca8]",
+        isOver && "ring-2 ring-[#18a8c7] ring-offset-2",
+      )}
+      data-node-id={node.id}
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+    >
+      {rendered as ReactNode}
+    </div>
+  );
+}
+
 export function BuilderCanvas() {
   const dispatch = useAppDispatch();
-  const { viewport, zoom } = useAppSelector((state) => state.builder);
+  const { viewport, zoom, isGridVisible } = useAppSelector(
+    (state) => state.builder,
+  );
+  const activeRootNode = useAppSelector(selectActiveRootNode);
+  const selectedIds = useAppSelector((state) => state.selection.selectedIds);
+  const dropIndicator = useAppSelector(
+    (state) => state.builderDocument.dropIndicator,
+  );
 
   return (
     <section className="relative flex h-full min-h-0 flex-col">
@@ -40,14 +101,48 @@ export function BuilderCanvas() {
             onClick={() => dispatch(setZoom(Math.min(200, zoom + 10)))}
           />
           <Button
+            aria-label="Reset zoom"
+            icon={<RotateCcw size={14} />}
+            size="small"
+            onClick={() => dispatch(setZoom(100))}
+          />
+          <Button
             aria-label="Fit canvas"
             icon={<Maximize2 size={14} />}
             size="small"
+            onClick={() => dispatch(setZoom(viewport === "desktop" ? 90 : 100))}
+          />
+          <Button
+            aria-label="Toggle grid"
+            icon={<Grid2X2 size={14} />}
+            size="small"
+            type={isGridVisible ? "primary" : "default"}
+            onClick={() => dispatch(toggleGrid())}
           />
         </div>
       </div>
 
-      <div className="ezyr-canvas-grid min-h-0 flex-1 overflow-auto p-10">
+      <div
+        className={cn(
+          "relative min-h-0 flex-1 overflow-auto p-10",
+          isGridVisible && "ezyr-canvas-grid",
+        )}
+        onClick={() => dispatch(selectOne("home-root"))}
+      >
+        {dropIndicator && (
+          <div
+            className={cn(
+              "pointer-events-none absolute right-4 top-4 z-10 rounded-md border px-3 py-2 text-xs shadow-sm",
+              dropIndicator.isValid
+                ? "border-[#9ee7f2] bg-[#effcff] text-[#08708a]"
+                : "border-[#ffd1d1] bg-[#fff5f5] text-[#b42318]",
+            )}
+          >
+            {dropIndicator.isValid
+              ? `Drop into ${dropIndicator.intent.targetParentId}`
+              : dropIndicator.message}
+          </div>
+        )}
         <div
           className={cn(
             "mx-auto min-h-[640px] rounded-md border border-[#cfd7e4] bg-white shadow-sm transition-all",
@@ -58,26 +153,17 @@ export function BuilderCanvas() {
             transformOrigin: "top center",
           }}
         >
-          <div className="border-b border-[#e4e7ec] px-8 py-6">
-            <Typography.Text className="text-xs font-semibold uppercase text-[#0f8ca8]">
-              App screen
-            </Typography.Text>
-            <Typography.Title className="mt-2! mb-0! text-2xl! text-[#172033]!">
-              Build something new
-            </Typography.Title>
-          </div>
-          <div className="grid gap-4 p-8 md:grid-cols-3">
-            {["Hero", "Form", "Data view"].map((label) => (
-              <div
-                className="h-36 rounded border border-dashed border-[#a9b6c8] bg-[#f8fafc] p-4"
-                key={label}
-              >
-                <Typography.Text className="text-sm font-medium text-[#475467]">
-                  {label}
-                </Typography.Text>
-              </div>
-            ))}
-          </div>
+          {activeRootNode ? (
+            <EditableNode
+              node={activeRootNode}
+              selectedIds={selectedIds}
+              onSelect={(nodeId) => dispatch(selectOne(nodeId))}
+            />
+          ) : (
+            <div className="p-8 text-sm text-[#667085]">
+              No active page root found.
+            </div>
+          )}
         </div>
       </div>
     </section>

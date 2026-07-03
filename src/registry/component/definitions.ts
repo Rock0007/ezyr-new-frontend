@@ -1,6 +1,7 @@
 import type { ComponentDefinition } from "@/registry/types";
+import { antDesignComponentDefinitions } from "./ant-design-definitions";
 
-export const coreComponentDefinitions: readonly ComponentDefinition[] = [
+const ezyrFoundationDefinitions: readonly ComponentDefinition[] = [
   {
     id: "Frame",
     displayName: "Frame",
@@ -79,4 +80,14 @@ export const coreComponentDefinitions: readonly ComponentDefinition[] = [
     slots: ["children"],
     childrenRules: { minChildren: 0 },
   },
+];
+
+export const coreComponentDefinitions: readonly ComponentDefinition[] = [
+  ...ezyrFoundationDefinitions.filter(
+    (definition) =>
+      !antDesignComponentDefinitions.some(
+        (antDefinition) => antDefinition.id === definition.id,
+      ),
+  ),
+  ...antDesignComponentDefinitions,
 ];

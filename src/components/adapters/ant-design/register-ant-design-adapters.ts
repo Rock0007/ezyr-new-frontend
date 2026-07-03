@@ -1,6 +1,8 @@
 import { adapterRegistry } from "@/registry/adapter";
+import { componentRegistry } from "@/registry/component";
 import { AntButtonAdapter } from "./ant-button-adapter";
 import { AntFrameAdapter } from "./ant-frame-adapter";
+import { AntGenericAdapter } from "./ant-generic-adapter";
 import { AntImageAdapter } from "./ant-image-adapter";
 import { AntSectionAdapter } from "./ant-section-adapter";
 import { AntTextAdapter } from "./ant-text-adapter";
@@ -42,11 +44,17 @@ export function registerAntDesignAdapters(): void {
     provider: "ant-design",
     component: AntImageAdapter,
   });
-  adapterRegistry.register({
-    id: "ant.Form",
-    componentType: "Form",
-    provider: "ant-design",
-    component: AntFrameAdapter,
+  componentRegistry.list().forEach((definition) => {
+    if (adapterRegistry.getForComponent(definition.id)) {
+      return;
+    }
+
+    adapterRegistry.register({
+      id: `ant.${definition.id}`,
+      componentType: definition.id,
+      provider: "ant-design",
+      component: AntGenericAdapter,
+    });
   });
 
   isRegistered = true;

@@ -1,14 +1,9 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-
-type HistoryEntry = {
-  id: string;
-  label: string;
-  createdAt: string;
-};
+import type { BuilderHistoryEntry } from "@/features/builder/history";
 
 type HistoryState = {
-  past: HistoryEntry[];
-  future: HistoryEntry[];
+  past: BuilderHistoryEntry[];
+  future: BuilderHistoryEntry[];
 };
 
 const initialState: HistoryState = {
@@ -20,13 +15,38 @@ const historySlice = createSlice({
   name: "history",
   initialState,
   reducers: {
-    pushHistory: (state, action: PayloadAction<HistoryEntry>) => {
-      state.past.push(action.payload);
-      state.future = [];
+    pushHistory: (state, action: PayloadAction<BuilderHistoryEntry>) => ({
+      past: [...state.past, action.payload],
+      future: [],
+    }),
+    undoHistory: (state) => {
+      const entry = state.past.at(-1);
+
+      if (!entry) {
+        return state;
+      }
+
+      return {
+        past: state.past.slice(0, -1),
+        future: [entry, ...state.future],
+      };
+    },
+    redoHistory: (state) => {
+      const [entry, ...future] = state.future;
+
+      if (!entry) {
+        return state;
+      }
+
+      return {
+        past: [...state.past, entry],
+        future,
+      };
     },
     resetHistory: () => initialState,
   },
 });
 
-export const { pushHistory, resetHistory } = historySlice.actions;
+export const { pushHistory, redoHistory, resetHistory, undoHistory } =
+  historySlice.actions;
 export const historyReducer = historySlice.reducer;

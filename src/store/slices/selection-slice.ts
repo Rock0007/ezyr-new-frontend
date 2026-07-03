@@ -6,7 +6,7 @@ type SelectionState = {
 };
 
 const initialState: SelectionState = {
-  selectedIds: [],
+  selectedIds: ["home-section"],
   hoveredId: null,
 };
 
@@ -17,6 +17,16 @@ const selectionSlice = createSlice({
     selectOne: (state, action: PayloadAction<string>) => {
       state.selectedIds = [action.payload];
     },
+    toggleSelected: (state, action: PayloadAction<string>) => {
+      state.selectedIds = state.selectedIds.includes(action.payload)
+        ? state.selectedIds.filter((id) => id !== action.payload)
+        : [...state.selectedIds, action.payload];
+    },
+    removeSelectedIds: (state, action: PayloadAction<string[]>) => {
+      state.selectedIds = state.selectedIds.filter(
+        (id) => !action.payload.includes(id),
+      );
+    },
     clearSelection: (state) => {
       state.selectedIds = [];
     },
@@ -26,6 +36,11 @@ const selectionSlice = createSlice({
   },
 });
 
-export const { selectOne, clearSelection, setHoveredId } =
-  selectionSlice.actions;
+export const {
+  clearSelection,
+  removeSelectedIds,
+  selectOne,
+  setHoveredId,
+  toggleSelected,
+} = selectionSlice.actions;
 export const selectionReducer = selectionSlice.reducer;

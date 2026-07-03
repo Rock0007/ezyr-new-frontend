@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { baseApi } from "@/store/api/base-api";
+import { builderDocumentReducer } from "@/store/slices/builder-document-slice";
 import { builderReducer } from "@/store/slices/builder-slice";
 import { historyReducer } from "@/store/slices/history-slice";
 import { projectReducer } from "@/store/slices/project-slice";
@@ -11,6 +12,7 @@ export const store = configureStore({
   reducer: {
     [baseApi.reducerPath]: baseApi.reducer,
     builder: builderReducer,
+    builderDocument: builderDocumentReducer,
     selection: selectionReducer,
     project: projectReducer,
     history: historyReducer,

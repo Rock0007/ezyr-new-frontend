@@ -9,6 +9,7 @@ type BuilderState = {
   isLeftPanelCollapsed: boolean;
   isRightPanelCollapsed: boolean;
   isConsoleOpen: boolean;
+  isGridVisible: boolean;
 };
 
 const initialState: BuilderState = {
@@ -19,6 +20,7 @@ const initialState: BuilderState = {
   isLeftPanelCollapsed: false,
   isRightPanelCollapsed: false,
   isConsoleOpen: false,
+  isGridVisible: true,
 };
 
 const builderSlice = createSlice({
@@ -46,6 +48,9 @@ const builderSlice = createSlice({
     toggleConsole: (state) => {
       state.isConsoleOpen = !state.isConsoleOpen;
     },
+    toggleGrid: (state) => {
+      state.isGridVisible = !state.isGridVisible;
+    },
   },
 });
 
@@ -55,6 +60,7 @@ export const {
   setZoom,
   toggleCanvasLock,
   toggleConsole,
+  toggleGrid,
   toggleLeftPanel,
   toggleRightPanel,
 } = builderSlice.actions;

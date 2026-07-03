@@ -1,20 +1,21 @@
 "use client";
 
-import {
-  Button,
-  Collapse,
-  Form,
-  Input,
-  Layout,
-  Select,
-  Slider,
-  Switch,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Collapse, Form, Layout, Tooltip, Typography } from "antd";
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import type { JsonValue } from "@/schemas/app-spec";
+import {
+  groupProperties,
+  propertyEditorRegistry,
+  readPropertyValue,
+} from "@/features/builder/property-panel";
+import { hydrateAppNode } from "@/features/builder/state/normalization";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
+import { propertyRegistry } from "@/registry/property";
+import {
+  updateNodeProps,
+  updateNodeStyle,
+} from "@/store/slices/builder-document-slice";
 import { toggleRightPanel } from "@/store/slices/builder-slice";
 
 export function PropertyPanel() {
@@ -22,6 +23,51 @@ export function PropertyPanel() {
   const isCollapsed = useAppSelector(
     (state) => state.builder.isRightPanelCollapsed,
   );
+  const selectedIds = useAppSelector((state) => state.selection.selectedIds);
+  const nodes = useAppSelector((state) => state.builderDocument.nodes);
+  const selectedNode = selectedIds.length === 1 ? nodes[selectedIds[0]] : null;
+  const selectedAppNode = selectedNode
+    ? hydrateAppNode(selectedNode.id, nodes)
+    : null;
+  const propertyGroups = selectedAppNode
+    ? groupProperties(
+        propertyRegistry
+          .listForComponent(selectedAppNode.type)
+          .filter(
+            (property) =>
+              !property.isVisible || property.isVisible(selectedAppNode),
+          ),
+      )
+    : [];
+
+  const updateProperty = (
+    propertySource: "props" | "style" | "bindings" | "events",
+    propertyKey: string,
+    value: JsonValue,
+  ) => {
+    if (!selectedAppNode) {
+      return;
+    }
+
+    if (propertySource === "props") {
+      dispatch(
+        updateNodeProps({
+          nodeId: selectedAppNode.id,
+          props: { [propertyKey]: value },
+        }),
+      );
+      return;
+    }
+
+    if (propertySource === "style") {
+      dispatch(
+        updateNodeStyle({
+          nodeId: selectedAppNode.id,
+          style: { [propertyKey]: value },
+        }),
+      );
+    }
+  };
 
   return (
     <Layout.Sider
@@ -70,67 +116,65 @@ export function PropertyPanel() {
             </Tooltip>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-            <Form layout="vertical" size="small">
-              <Collapse
-                className="builder-properties-collapse"
-                defaultActiveKey={["identity", "layout", "style"]}
-                ghost
-                items={[
-                  {
-                    key: "identity",
-                    label: "Identity",
-                    children: (
-                      <>
-                        <Form.Item label="Name">
-                          <Input defaultValue="Home section" />
+            {selectedAppNode ? (
+              <Form layout="vertical" size="small">
+                <div className="mb-3 rounded-md border border-[#d8dee9] bg-[#f8fafc] px-3 py-2">
+                  <Typography.Text className="block text-xs font-medium text-[#667085]">
+                    Selected
+                  </Typography.Text>
+                  <Typography.Text className="block truncate text-sm font-semibold text-[#172033]">
+                    {selectedAppNode.type} / {selectedAppNode.id}
+                  </Typography.Text>
+                </div>
+                <Collapse
+                  className="builder-properties-collapse"
+                  defaultActiveKey={propertyGroups.map(
+                    (group) => group.category,
+                  )}
+                  ghost
+                  items={propertyGroups.map((group) => ({
+                    key: group.category,
+                    label: group.category,
+                    children: group.properties.map((property) => {
+                      const editor = propertyEditorRegistry.get(
+                        property.editor,
+                      );
+                      const Editor = editor?.component;
+
+                      return (
+                        <Form.Item label={property.label} key={property.id}>
+                          {Editor ? (
+                            <Editor
+                              value={readPropertyValue(
+                                selectedAppNode,
+                                property,
+                              )}
+                              options={property.options}
+                              onChange={(value) =>
+                                updateProperty(
+                                  property.valueSource,
+                                  property.valueKey,
+                                  value,
+                                )
+                              }
+                            />
+                          ) : (
+                            <Typography.Text type="danger">
+                              Missing editor: {property.editor}
+                            </Typography.Text>
+                          )}
                         </Form.Item>
-                        <Form.Item label="Element">
-                          <Select
-                            defaultValue="section"
-                            options={[
-                              { value: "section", label: "Section" },
-                              { value: "container", label: "Container" },
-                              { value: "component", label: "Component" },
-                            ]}
-                          />
-                        </Form.Item>
-                      </>
-                    ),
-                  },
-                  {
-                    key: "layout",
-                    label: "Layout",
-                    children: (
-                      <>
-                        <Form.Item label="Width">
-                          <Slider defaultValue={100} min={25} />
-                        </Form.Item>
-                        <Form.Item label="Padding">
-                          <Slider defaultValue={32} max={96} />
-                        </Form.Item>
-                        <Form.Item label="Responsive">
-                          <Switch defaultChecked />
-                        </Form.Item>
-                      </>
-                    ),
-                  },
-                  {
-                    key: "style",
-                    label: "Style",
-                    children: (
-                      <>
-                        <Form.Item label="Background">
-                          <Input defaultValue="#ffffff" />
-                        </Form.Item>
-                        <Form.Item label="Radius">
-                          <Slider defaultValue={6} max={32} />
-                        </Form.Item>
-                      </>
-                    ),
-                  },
-                ]}
-              />
-            </Form>
+                      );
+                    }),
+                  }))}
+                />
+              </Form>
+            ) : (
+              <div className="rounded-md border border-dashed border-[#cfd7e4] bg-[#f8fafc] p-4 text-sm text-[#667085]">
+                Select one component on the canvas to edit its metadata-driven
+                properties.
+              </div>
+            )}
           </div>
         </aside>
       )}

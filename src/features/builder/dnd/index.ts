@@ -1,4 +1,5 @@
 export { calculateAutoScrollVector } from "./auto-scroll";
+export { BUILDER_CANVAS_DROP_ZONE_ID } from "./constants";
 export { findDeepestCollision } from "./collision";
 export { createDragSession } from "./drag-controller";
 export { validateDropIntent } from "./drop-controller";

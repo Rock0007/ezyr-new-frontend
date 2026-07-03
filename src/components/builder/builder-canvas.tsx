@@ -3,8 +3,16 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Button, Typography } from "antd";
 import { Grid2X2, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import type { AppNode } from "@/schemas/app-spec";
+import { BUILDER_CANVAS_DROP_ZONE_ID } from "@/features/builder/dnd";
 import { selectActiveRootNode } from "@/features/builder/state/selectors";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
@@ -18,6 +26,14 @@ const viewportWidthClass = {
   tablet: "w-[720px]",
   mobile: "w-[390px]",
 };
+
+const ZOOM_MIN = 25;
+const ZOOM_MAX = 200;
+const ZOOM_STEP = 10;
+
+function clampZoom(value: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+}
 
 function EditableNode({
   node,
@@ -69,6 +85,11 @@ function EditableNode({
 
 export function BuilderCanvas() {
   const dispatch = useAppDispatch();
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
+  const { isOver: isCanvasOver, setNodeRef: setCanvasDropRef } = useDroppable({
+    id: BUILDER_CANVAS_DROP_ZONE_ID,
+    data: { kind: "canvas" },
+  });
   const { viewport, zoom, isGridVisible } = useAppSelector(
     (state) => state.builder,
   );
@@ -77,6 +98,71 @@ export function BuilderCanvas() {
   const dropIndicator = useAppSelector(
     (state) => state.builderDocument.dropIndicator,
   );
+  const zoomTo = useCallback(
+    (nextZoom: number) => dispatch(setZoom(clampZoom(nextZoom))),
+    [dispatch],
+  );
+  const zoomBy = useCallback(
+    (delta: number) => zoomTo(zoom + delta),
+    [zoom, zoomTo],
+  );
+  const fitZoom = viewport === "desktop" ? 90 : 100;
+  const setCanvasViewportNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      canvasViewportRef.current = node;
+      setCanvasDropRef(node);
+    },
+    [setCanvasDropRef],
+  );
+
+  useEffect(() => {
+    const viewportElement = canvasViewportRef.current;
+
+    if (!viewportElement) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+
+      event.preventDefault();
+      const direction = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      zoomTo(zoom + direction);
+    };
+
+    viewportElement.addEventListener("wheel", handleWheel, {
+      passive: false,
+    });
+
+    return () => {
+      viewportElement.removeEventListener("wheel", handleWheel);
+    };
+  }, [zoom, zoomTo]);
+
+  const handleCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      zoomBy(ZOOM_STEP);
+      return;
+    }
+
+    if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      zoomBy(-ZOOM_STEP);
+      return;
+    }
+
+    if (event.key === "0") {
+      event.preventDefault();
+      zoomTo(100);
+    }
+  };
 
   return (
     <section className="relative flex h-full min-h-0 flex-col">
@@ -89,7 +175,8 @@ export function BuilderCanvas() {
             aria-label="Zoom out"
             icon={<Minus size={14} />}
             size="small"
-            onClick={() => dispatch(setZoom(Math.max(25, zoom - 10)))}
+            title="Zoom out"
+            onClick={() => zoomBy(-ZOOM_STEP)}
           />
           <span className="w-12 text-center text-xs font-medium text-[#475467]">
             {zoom}%
@@ -98,19 +185,22 @@ export function BuilderCanvas() {
             aria-label="Zoom in"
             icon={<Plus size={14} />}
             size="small"
-            onClick={() => dispatch(setZoom(Math.min(200, zoom + 10)))}
+            title="Zoom in"
+            onClick={() => zoomBy(ZOOM_STEP)}
           />
           <Button
             aria-label="Reset zoom"
             icon={<RotateCcw size={14} />}
             size="small"
-            onClick={() => dispatch(setZoom(100))}
+            title="Reset zoom"
+            onClick={() => zoomTo(100)}
           />
           <Button
             aria-label="Fit canvas"
             icon={<Maximize2 size={14} />}
             size="small"
-            onClick={() => dispatch(setZoom(viewport === "desktop" ? 90 : 100))}
+            title="Fit canvas"
+            onClick={() => zoomTo(fitZoom)}
           />
           <Button
             aria-label="Toggle grid"
@@ -123,11 +213,19 @@ export function BuilderCanvas() {
       </div>
 
       <div
+        ref={setCanvasViewportNode}
         className={cn(
-          "relative min-h-0 flex-1 overflow-auto p-10",
+          "relative min-h-0 flex-1 overflow-auto p-10 outline-none focus-visible:ring-2 focus-visible:ring-[#18a8c7] focus-visible:ring-inset",
           isGridVisible && "ezyr-canvas-grid",
+          isCanvasOver && "ring-2 ring-[#18a8c7] ring-inset",
         )}
+        aria-label="Builder canvas. Use Ctrl plus mouse wheel or Ctrl plus plus and minus to zoom."
+        data-builder-canvas-viewport="true"
+        role="region"
+        tabIndex={0}
+        title="Ctrl + wheel to zoom. Ctrl + +/- to zoom with keyboard."
         onClick={() => dispatch(selectOne("home-root"))}
+        onKeyDown={handleCanvasKeyDown}
       >
         {dropIndicator && (
           <div

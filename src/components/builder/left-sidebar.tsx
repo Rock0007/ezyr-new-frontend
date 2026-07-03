@@ -24,6 +24,7 @@ import { componentRegistry } from "@/registry/component";
 import { insertNode } from "@/store/slices/builder-document-slice";
 import { toggleConsole } from "@/store/slices/builder-slice";
 import { selectOne } from "@/store/slices/selection-slice";
+import { cn } from "@/utils/cn";
 
 const navigationItems = [
   { label: "Builder", icon: <MousePointer2 size={16} /> },
@@ -53,17 +54,16 @@ function ComponentPaletteItem({
       id: `palette-${component.id}`,
       data: { componentType: component.kind },
     });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  void transform;
 
   return (
     <button
       ref={setNodeRef}
-      className="group flex h-11 w-full items-center gap-2 rounded-md border border-transparent bg-white px-2 text-left text-sm transition hover:border-[var(--border)] hover:bg-[var(--brand-wash)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f8ca8] disabled:opacity-60"
-      style={style}
+      className={cn(
+        "group flex h-11 w-full items-center gap-2 rounded-md border border-transparent bg-white px-2 text-left text-sm transition hover:border-[var(--border)] hover:bg-[var(--brand-wash)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f8ca8]",
+        isDragging && "opacity-40",
+      )}
       type="button"
-      disabled={isDragging}
       onDoubleClick={() => onInsert(component.kind)}
       {...listeners}
       {...attributes}

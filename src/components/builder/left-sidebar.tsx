@@ -21,12 +21,12 @@ import {
   BUILDER_TAXONOMY_LABELS,
   BUILDER_TAXONOMY_ORDER,
 } from "@/constants/builder";
-import { validateDropIntent } from "@/features/builder/dnd";
+import { createDropPlan } from "@/features/builder/dnd";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { componentRegistry } from "@/registry/component";
 import type { ComponentTaxonomy } from "@/registry/types";
-import { insertNode } from "@/store/slices/builder-document-slice";
+import { applyBuilderCommand } from "@/store/slices/builder-document-slice";
 import { toggleConsole } from "@/store/slices/builder-slice";
 import { selectOne } from "@/store/slices/selection-slice";
 import { cn } from "@/utils/cn";
@@ -56,7 +56,7 @@ function ComponentPaletteItem({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `palette-${component.id}`,
-    data: { componentType: component.kind },
+    data: { sourceKind: "component", componentType: component.kind },
   });
 
   return (
@@ -128,30 +128,36 @@ export function LeftSidebar() {
   );
 
   const insertComponent = (componentType: string) => {
+    if (!rootNodeId) {
+      return;
+    }
+
     const selectedParentId = selectedIds[0] ?? rootNodeId;
     const selectedParent = nodes[selectedParentId];
     const fallbackParent = nodes[rootNodeId];
-    const preferredParentId = selectedParent
-      ? selectedParent.id
-      : fallbackParent.id;
-    const preferredParent = nodes[preferredParentId];
-    const intent = {
-      componentType,
-      targetParentId: preferredParentId,
-      targetIndex: preferredParent.childIds.length,
-      placement: "inside" as const,
-    };
-    const validation = validateDropIntent(intent, nodes);
-    const parentId = validation.isValid ? preferredParentId : rootNodeId;
-    const parent = nodes[parentId];
+
+    if (!fallbackParent) {
+      return;
+    }
+
     const nodeId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : createLocalNodeId(componentType);
-    const node = componentRegistry.createNode(componentType, nodeId);
+    const plan = createDropPlan({
+      payload: { kind: "new-component", componentType },
+      nodes,
+      rootNodeId,
+      overId: selectedParent?.id ?? rootNodeId,
+      createNode: () => componentRegistry.createNode(componentType, nodeId),
+    });
 
-    dispatch(insertNode({ node, parentId, index: parent.childIds.length }));
-    dispatch(selectOne(node.id));
+    if (!plan.isValid || plan.command.type !== "insert-node") {
+      return;
+    }
+
+    dispatch(applyBuilderCommand(plan.command));
+    dispatch(selectOne(plan.command.node.id));
   };
 
   return (

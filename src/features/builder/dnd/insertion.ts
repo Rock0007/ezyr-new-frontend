@@ -7,3 +7,7 @@ export function resolveInsertionIndex(intent: DropIntent): number {
 
   return intent.targetIndex;
 }
+
+export function resolveInsideInsertionIndex(intent: DropIntent): number {
+  return intent.placement === "inside-start" ? 0 : intent.targetIndex;
+}

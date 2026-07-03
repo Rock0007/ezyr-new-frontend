@@ -34,9 +34,10 @@ export type BuilderDragSource =
 export type BuilderDragSession = {
   id: string;
   source: BuilderDragSource;
+  pointerOffset?: { x: number; y: number };
 };
 
-export type DropPlacement = "before" | "after" | "inside";
+export type DropPlacement = "before" | "after" | "inside-start" | "inside-end";
 
 export type DropIntent = {
   draggedNodeId?: string;
@@ -47,7 +48,7 @@ export type DropIntent = {
 };
 
 export type DropIndicator = {
-  intent: DropIntent;
+  intent: DropIntent | null;
   isValid: boolean;
   message?: string;
 };
@@ -56,5 +57,6 @@ export type BuilderCommand =
   | { type: "insert-node"; node: AppNode; parentId: string; index?: number }
   | { type: "delete-node"; nodeId: string }
   | { type: "move-node"; nodeId: string; parentId: string; index: number }
+  | { type: "reorder-node"; nodeId: string; parentId: string; index: number }
   | { type: "update-node-props"; nodeId: string; props: JsonObject }
   | { type: "update-node-style"; nodeId: string; style: JsonObject };

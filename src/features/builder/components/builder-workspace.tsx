@@ -24,22 +24,20 @@ import { PropertyPanel } from "@/components/builder/property-panel";
 import { TopToolbar } from "@/components/builder/top-toolbar";
 import { BUILDER_COMPONENTS } from "@/constants/builder";
 import {
+  calculateAutoScrollVector,
   BUILDER_CANVAS_DROP_ZONE_ID,
-  resolveInsertionIndex,
-  validateDropIntent,
+  createDropPlan,
+  type DragPayload,
 } from "@/features/builder/dnd";
-import type {
-  DropIntent,
-  NormalizedBuilderNode,
-} from "@/features/builder/state/types";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { componentRegistry } from "@/registry/component";
 import {
-  insertNode,
+  applyBuilderCommand,
   setDragSession,
   setDropIndicator,
 } from "@/store/slices/builder-document-slice";
+import { nudgeCanvasPan } from "@/store/slices/builder-slice";
 import { selectOne } from "@/store/slices/selection-slice";
 
 let droppedNodeSequence = 0;
@@ -47,13 +45,6 @@ let droppedNodeSequence = 0;
 function createDroppedNodeId(componentType: string): string {
   droppedNodeSequence += 1;
   return `${componentType}-${droppedNodeSequence}`;
-}
-
-function getComponentType(
-  event: DragEndEvent | DragOverEvent | DragStartEvent,
-): string | null {
-  const componentType = event.active.data.current?.componentType;
-  return typeof componentType === "string" ? componentType : null;
 }
 
 const builderCollisionDetection: CollisionDetection = (args) => {
@@ -67,77 +58,6 @@ const builderCollisionDetection: CollisionDetection = (args) => {
 
   return nodeCollision ? [nodeCollision] : collisions;
 };
-
-function createAppendIntent(
-  componentType: string,
-  parent: NormalizedBuilderNode,
-): DropIntent {
-  return {
-    componentType,
-    targetParentId: parent.id,
-    targetIndex: parent.childIds.length,
-    placement: "inside",
-  };
-}
-
-function resolveDropIntent({
-  componentType,
-  nodes,
-  overId,
-  rootNodeId,
-}: {
-  componentType: string;
-  nodes: Record<string, NormalizedBuilderNode>;
-  overId: string;
-  rootNodeId: string;
-}):
-  | { intent: DropIntent; isValid: true }
-  | { intent: DropIntent; isValid: false; message: string }
-  | null {
-  const candidateIds: string[] = [];
-
-  if (overId === BUILDER_CANVAS_DROP_ZONE_ID) {
-    candidateIds.push(rootNodeId);
-  } else if (nodes[overId]) {
-    let currentId: string | null = overId;
-
-    while (currentId) {
-      candidateIds.push(currentId);
-      currentId = nodes[currentId]?.parentId ?? null;
-    }
-  }
-
-  if (!candidateIds.includes(rootNodeId)) {
-    candidateIds.push(rootNodeId);
-  }
-
-  let firstInvalid:
-    | { intent: DropIntent; isValid: false; message: string }
-    | null = null;
-
-  for (const candidateId of candidateIds) {
-    const parent = nodes[candidateId];
-
-    if (!parent) {
-      continue;
-    }
-
-    const intent = createAppendIntent(componentType, parent);
-    const validation = validateDropIntent(intent, nodes);
-
-    if (validation.isValid) {
-      return { intent, isValid: true };
-    }
-
-    firstInvalid ??= {
-      intent,
-      isValid: false,
-      message: validation.message,
-    };
-  }
-
-  return firstInvalid;
-}
 
 function resolveDropTargetIdFromPoint(
   point: { x: number; y: number } | null,
@@ -163,6 +83,33 @@ function resolveDropTargetIdFromPoint(
   return null;
 }
 
+function getDragPayload(
+  event: DragEndEvent | DragOverEvent | DragStartEvent,
+): DragPayload | null {
+  const data = event.active.data.current;
+  const sourceKind = data?.sourceKind;
+
+  if (sourceKind === "component" && typeof data?.componentType === "string") {
+    return { kind: "new-component", componentType: data.componentType };
+  }
+
+  if (sourceKind === "node" && typeof data?.nodeId === "string") {
+    return { kind: "existing-node", nodeId: data.nodeId };
+  }
+
+  if (typeof data?.componentType === "string") {
+    return { kind: "new-component", componentType: data.componentType };
+  }
+
+  return null;
+}
+
+function getPointerPosition(): { x: number; y: number } | null {
+  return lastKnownPointerPosition;
+}
+
+let lastKnownPointerPosition: { x: number; y: number } | null = null;
+
 function ComponentDragOverlay({ componentType }: { componentType: string }) {
   const component = BUILDER_COMPONENTS.find((item) => item.kind === componentType);
 
@@ -186,7 +133,8 @@ function ComponentDragOverlay({ componentType }: { componentType: string }) {
 export function BuilderWorkspace() {
   const dispatch = useAppDispatch();
   const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const [activeComponentType, setActiveComponentType] = useState<string | null>(
+  const autoPanFrameRef = useRef<number | null>(null);
+  const [activeDragPayload, setActiveDragPayload] = useState<DragPayload | null>(
     null,
   );
   const nodes = useAppSelector((state) => state.builderDocument.nodes);
@@ -204,8 +152,9 @@ export function BuilderWorkspace() {
   );
 
   useEffect(() => {
-    if (!activeComponentType) {
+    if (!activeDragPayload) {
       lastPointerPositionRef.current = null;
+      lastKnownPointerPosition = null;
       return;
     }
 
@@ -214,6 +163,7 @@ export function BuilderWorkspace() {
         x: event.clientX,
         y: event.clientY,
       };
+      lastKnownPointerPosition = lastPointerPositionRef.current;
     };
 
     window.addEventListener("pointermove", handlePointerMove, {
@@ -225,96 +175,170 @@ export function BuilderWorkspace() {
         capture: true,
       });
     };
-  }, [activeComponentType]);
+  }, [activeDragPayload]);
+
+  useEffect(
+    () => () => {
+      if (autoPanFrameRef.current !== null) {
+        cancelAnimationFrame(autoPanFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  const queueAutoPan = () => {
+    const point = lastPointerPositionRef.current ?? getPointerPosition();
+    const viewportElement = document.querySelector<HTMLElement>(
+      '[data-builder-canvas-viewport="true"]',
+    );
+
+    if (!point || !viewportElement) {
+      return;
+    }
+
+    const vector = calculateAutoScrollVector(
+      point,
+      viewportElement.getBoundingClientRect(),
+      56,
+      14,
+    );
+
+    if (vector.x === 0 && vector.y === 0) {
+      return;
+    }
+
+    if (autoPanFrameRef.current !== null) {
+      cancelAnimationFrame(autoPanFrameRef.current);
+    }
+
+    autoPanFrameRef.current = requestAnimationFrame(() => {
+      dispatch(nudgeCanvasPan({ x: -vector.x, y: -vector.y }));
+      autoPanFrameRef.current = null;
+    });
+  };
+
+  const createPreviewNode = (componentType: string) =>
+    componentRegistry.createNode(componentType, "__drop-preview__");
 
   const handleDragOver = (event: DragOverEvent) => {
-    const componentType = getComponentType(event);
+    const payload = getDragPayload(event);
     const overId = String(event.over?.id ?? "");
 
-    if (!componentType || !overId || !rootNodeId) {
+    queueAutoPan();
+
+    if (!payload || !overId || !rootNodeId) {
       dispatch(setDropIndicator(null));
       return;
     }
 
-    const result = resolveDropIntent({
-      componentType,
+    const plan = createDropPlan({
+      payload,
       nodes,
       overId,
       rootNodeId,
+      pointer: lastPointerPositionRef.current,
+      overRect: event.over?.rect ?? null,
+      createNode: createPreviewNode,
     });
-
-    if (!result) {
-      dispatch(setDropIndicator(null));
-      return;
-    }
 
     dispatch(
       setDropIndicator({
-        intent: result.intent,
-        isValid: result.isValid,
-        message: result.isValid ? undefined : result.message,
+        intent: plan.intent,
+        isValid: plan.isValid,
+        message: plan.isValid ? undefined : plan.message,
       }),
     );
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const componentType = getComponentType(event);
+    const payload = getDragPayload(event);
+    const finalPointer = lastPointerPositionRef.current;
     const overId =
       String(event.over?.id ?? "") ||
-      resolveDropTargetIdFromPoint(lastPointerPositionRef.current) ||
+      resolveDropTargetIdFromPoint(finalPointer) ||
       "";
 
-    setActiveComponentType(null);
+    setActiveDragPayload(null);
     lastPointerPositionRef.current = null;
+    lastKnownPointerPosition = null;
     dispatch(setDragSession(null));
     dispatch(setDropIndicator(null));
 
-    if (!componentType || !overId || !rootNodeId) {
+    if (!payload || !overId || !rootNodeId) {
       return;
     }
 
-    const result = resolveDropIntent({
-      componentType,
+    const componentType =
+      payload.kind === "new-component"
+        ? payload.componentType
+        : nodes[payload.nodeId]?.type;
+    const nodeId = componentType
+      ? typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : createDroppedNodeId(componentType)
+      : "";
+    const plan = createDropPlan({
+      payload,
       nodes,
       overId,
       rootNodeId,
+      pointer: finalPointer,
+      overRect: event.over?.rect ?? null,
+      createNode: (nextComponentType) =>
+        componentRegistry.createNode(nextComponentType, nodeId),
     });
 
-    if (!result?.isValid) {
+    if (!plan.isValid) {
       return;
     }
 
-    const nodeId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : createDroppedNodeId(componentType);
-    const node = componentRegistry.createNode(componentType, nodeId);
+    dispatch(applyBuilderCommand(plan.command));
 
-    dispatch(
-      insertNode({
-        node,
-        parentId: result.intent.targetParentId,
-        index: resolveInsertionIndex(result.intent),
-      }),
-    );
-    dispatch(selectOne(node.id));
+    if (plan.command.type === "insert-node") {
+      dispatch(selectOne(plan.command.node.id));
+      return;
+    }
+
+    if (
+      plan.command.type === "move-node" ||
+      plan.command.type === "reorder-node"
+    ) {
+      dispatch(selectOne(plan.command.nodeId));
+    }
   };
+
+  const resolveActiveComponentType = () => {
+    if (!activeDragPayload) {
+      return null;
+    }
+
+    return activeDragPayload.kind === "new-component"
+      ? activeDragPayload.componentType
+      : nodes[activeDragPayload.nodeId]?.type ?? null;
+  };
+
+  const activeComponentType = resolveActiveComponentType();
 
   return (
     <DndContext
       collisionDetection={builderCollisionDetection}
       sensors={sensors}
       onDragCancel={() => {
-        setActiveComponentType(null);
+        setActiveDragPayload(null);
         lastPointerPositionRef.current = null;
+        lastKnownPointerPosition = null;
         dispatch(setDragSession(null));
         dispatch(setDropIndicator(null));
       }}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDragStart={(event) => {
-        const componentType = getComponentType(event) ?? "Unknown";
+        const payload = getDragPayload(event);
         const activatorEvent = event.activatorEvent;
+
+        if (!payload) {
+          return;
+        }
 
         if (
           "clientX" in activatorEvent &&
@@ -326,16 +350,23 @@ export function BuilderWorkspace() {
             x: activatorEvent.clientX,
             y: activatorEvent.clientY,
           };
+          lastKnownPointerPosition = lastPointerPositionRef.current;
         }
 
-        setActiveComponentType(componentType);
+        setActiveDragPayload(payload);
         dispatch(
           setDragSession({
             id: String(event.active.id),
-            source: {
-              kind: "component",
-              componentType,
-            },
+            source:
+              payload.kind === "new-component"
+                ? {
+                    kind: "component",
+                    componentType: payload.componentType,
+                  }
+                : {
+                    kind: "node",
+                    nodeId: payload.nodeId,
+                  },
           }),
         );
       }}

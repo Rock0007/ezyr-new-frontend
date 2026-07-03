@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+:root {
+  --background: #f5f7fb;
+  --foreground: #172033;
+  --panel: #ffffff;
+  --panel-muted: #f8fafc;
+  --border: #d8dee9;
+  --brand: #0f8ca8;
+  --brand-strong: #08708a;
+  --canvas-grid: rgba(15, 140, 168, 0.16);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.ezyr-panel {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.ezyr-canvas-grid {
+  background-image:
+    linear-gradient(var(--canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.builder-sidebar-tabs.ant-tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-sidebar-tabs .ant-tabs-nav {
+  margin: 0 0 14px;
+}
+
+.builder-sidebar-tabs .ant-tabs-nav::before {
+  border-color: var(--border);
+}
+
+.builder-sidebar-tabs .ant-tabs-tab {
+  padding: 14px 0 12px;
+}
+
+.builder-sidebar-tabs .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 28px;
+}
+
+.builder-sidebar-tabs .ant-tabs-content-holder,
+.builder-sidebar-tabs .ant-tabs-content,
+.builder-sidebar-tabs .ant-tabs-tabpane {
+  min-height: 0;
+}
+
+.builder-sidebar-tabs .ant-tabs-tabpane {
+  overflow: auto;
+}
+
+.builder-properties-collapse .ant-collapse-header {
+  align-items: center !important;
+  padding: 14px 0 !important;
+  color: #172033 !important;
+  font-weight: 500;
+}
+
+.builder-properties-collapse .ant-collapse-content-box {
+  padding: 2px 0 18px !important;
+}
+
+.builder-properties-collapse .ant-form-item {
+  margin-bottom: 18px;
+}
+
+.builder-properties-collapse .ant-form-item-label {
+  padding-bottom: 6px;
+}
+
+.builder-properties-collapse .ant-form-item-label > label {
+  color: #344054;
+  font-size: 12px;
+  font-weight: 500;
+}

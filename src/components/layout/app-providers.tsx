@@ -4,6 +4,7 @@ import { ConfigProvider, App as AntdApp, theme } from "antd";
 import { Provider } from "react-redux";
 import { registerAntDesignAdapters } from "@/components/adapters/ant-design";
 import { store } from "@/store/store";
+import { platformColors, platformTheme } from "@/theme/colors";
 
 type AppProvidersProps = {
   children: React.ReactNode;
@@ -18,16 +19,24 @@ export function AppProviders({ children }: AppProvidersProps) {
         theme={{
           algorithm: theme.defaultAlgorithm,
           token: {
-            colorPrimary: "#0f8ca8",
-            borderRadius: 6,
-            colorBgLayout: "#f5f7fb",
-            fontFamily: "var(--font-geist-sans)",
+            ...platformTheme,
+            colorText: platformColors.ink,
+            colorTextSecondary: platformColors.inkSubtle,
+            colorBorder: platformColors.border,
           },
           components: {
             Layout: {
               bodyBg: "#f5f7fb",
-              headerBg: "#ffffff",
-              siderBg: "#ffffff",
+              headerBg: platformColors.surface,
+              siderBg: platformColors.surface,
+            },
+            Input: {
+              activeBorderColor: platformColors.brand,
+              hoverBorderColor: platformColors.brand,
+            },
+            Select: {
+              activeBorderColor: platformColors.brand,
+              hoverBorderColor: platformColors.brand,
             },
           },
         }}

@@ -1,27 +1,21 @@
 "use client";
 
 import { useDraggable } from "@dnd-kit/core";
-import {
-  Button,
-  Divider,
-  Input,
-  Layout,
-  Tabs,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Layout, Tooltip } from "antd";
 import { useMemo, useState } from "react";
 import {
   Box,
   Braces,
   Database,
   FolderKanban,
+  GripVertical,
   ImageIcon,
   MousePointer2,
   Search,
   Terminal,
   Workflow,
 } from "lucide-react";
+import { EzyrInput, EzyrPanelHeader, EzyrTabs } from "@/components/ui";
 import { BUILDER_COMPONENTS } from "@/constants/builder";
 import { validateDropIntent } from "@/features/builder/dnd";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
@@ -66,7 +60,7 @@ function ComponentPaletteItem({
   return (
     <button
       ref={setNodeRef}
-      className="group flex h-[52px] w-full items-center gap-3 rounded-md border border-[#d8dee9] bg-white px-3 text-left text-sm transition hover:border-[#0f8ca8] hover:bg-[#f1fbfe] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f8ca8] disabled:opacity-60"
+      className="group flex h-11 w-full items-center gap-2 rounded-md border border-transparent bg-white px-2 text-left text-sm transition hover:border-[var(--border)] hover:bg-[var(--brand-wash)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f8ca8] disabled:opacity-60"
       style={style}
       type="button"
       disabled={isDragging}
@@ -74,23 +68,28 @@ function ComponentPaletteItem({
       {...listeners}
       {...attributes}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#e6f6fa] text-[#08708a] transition group-hover:bg-[#d9f2f7]">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--brand-soft)] text-[var(--brand-strong)] transition group-hover:bg-[#d9f2f7]">
         <Box size={15} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-[#172033]">
+        <span className="block truncate text-[13px] font-semibold leading-4 text-[#172033]">
           {component.name}
         </span>
-        <span className="block truncate text-[11px] capitalize text-[#667085]">
+        <span className="block truncate text-[11px] leading-4 capitalize text-[#667085]">
           {component.category}
         </span>
       </span>
+      <GripVertical
+        size={14}
+        className="shrink-0 text-[#98a2b3] opacity-0 transition group-hover:opacity-100"
+      />
     </button>
   );
 }
 
 export function LeftSidebar() {
   const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
   const dispatch = useAppDispatch();
   const isCollapsed = useAppSelector(
     (state) => state.builder.isLeftPanelCollapsed,
@@ -106,18 +105,19 @@ export function LeftSidebar() {
   const selectedIds = useAppSelector((state) => state.selection.selectedIds);
   const filteredComponents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return BUILDER_COMPONENTS;
-    }
-
     return BUILDER_COMPONENTS.filter(
       (component) =>
-        component.name.toLowerCase().includes(normalizedQuery) ||
-        component.category.toLowerCase().includes(normalizedQuery) ||
-        component.description.toLowerCase().includes(normalizedQuery),
+        (activeCategory === "all" || component.category === activeCategory) &&
+        (!normalizedQuery ||
+          component.name.toLowerCase().includes(normalizedQuery) ||
+          component.category.toLowerCase().includes(normalizedQuery) ||
+          component.description.toLowerCase().includes(normalizedQuery)),
     );
-  }, [query]);
+  }, [activeCategory, query]);
+  const categories = useMemo(
+    () => Array.from(new Set(BUILDER_COMPONENTS.map((item) => item.category))),
+    [],
+  );
 
   const insertComponent = (componentType: string) => {
     const selectedParentId = selectedIds[0] ?? rootNodeId;
@@ -150,7 +150,7 @@ export function LeftSidebar() {
     <Layout.Sider
       collapsed={isCollapsed}
       collapsedWidth={56}
-      width={300}
+      width={320}
       className="ezyr-panel border-r transition-all duration-200"
       theme="light"
       collapsible={false}
@@ -183,28 +183,43 @@ export function LeftSidebar() {
         </nav>
         {!isCollapsed && (
           <aside className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="border-b border-[var(--border)] px-5 py-4">
-              <Typography.Text className="block text-xs font-semibold uppercase tracking-wide text-[#344054]">
-                Insert
-              </Typography.Text>
-              <Input
-                className="mt-3"
+            <EzyrPanelHeader title="Component Library" />
+            <div className="border-b border-[var(--border)] px-3 py-3">
+              <EzyrInput
                 placeholder="Search components"
                 prefix={<Search size={14} />}
                 size="small"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
+              <div className="mt-2 flex gap-1 overflow-x-auto pb-1">
+                {["all", ...categories].map((category) => (
+                  <button
+                    className={[
+                      "shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium capitalize transition",
+                      activeCategory === category
+                        ? "border-[#0f8ca8] bg-[#e6f6fa] text-[#08708a]"
+                        : "border-[#d8dee9] bg-white text-[#667085] hover:border-[#0f8ca8] hover:text-[#08708a]",
+                    ].join(" ")}
+                    key={category}
+                    type="button"
+                    onClick={() => setActiveCategory(category)}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
             </div>
-            <Tabs
-              className="builder-sidebar-tabs min-h-0 flex-1 px-4"
+            <EzyrTabs
+              centered
+              className="builder-sidebar-tabs min-h-0 flex-1"
               defaultActiveKey="components"
               items={[
                 {
                   key: "components",
                   label: "Components",
                   children: (
-                    <div className="space-y-2 pb-4">
+                    <div className="space-y-1 px-2 pb-3">
                       {filteredComponents.map((component) => (
                         <ComponentPaletteItem
                           key={component.id}
@@ -224,18 +239,13 @@ export function LeftSidebar() {
                   key: "tree",
                   label: "Layers",
                   children: (
-                    <div className="rounded-md border border-[#d8dee9] bg-[#f8fafc] p-3 text-sm text-[#667085]">
+                    <div className="rounded-md border border-[#d8dee9] bg-[#f8fafc] p-3 text-xs text-[#667085]">
                       Page tree will appear here.
                     </div>
                   ),
                 },
               ]}
             />
-            <Divider className="my-0" />
-            <div className="px-5 py-4 text-xs leading-5 text-[#667085]">
-              Manual builder foundation. Drag and drop wiring will attach here
-              in the next milestone.
-            </div>
           </aside>
         )}
       </div>

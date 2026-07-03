@@ -2,6 +2,7 @@
 
 import { Input, InputNumber, Select, Switch } from "antd";
 import type { ComponentType } from "react";
+import { EzyrInput } from "@/components/ui";
 import type { JsonValue } from "@/schemas/app-spec";
 import { TypedRegistry } from "@/registry/create-registry";
 import type { PropertyEditorType, RegistryEntry } from "@/registry/types";
@@ -24,7 +25,7 @@ export type PropertyEditorDefinition = RegistryEntry & {
 
 function TextEditor({ value, onChange }: PropertyEditorProps) {
   return (
-    <Input
+    <EzyrInput
       value={typeof value === "string" ? value : ""}
       onChange={(event) => onChange(event.target.value)}
     />
@@ -34,6 +35,7 @@ function TextEditor({ value, onChange }: PropertyEditorProps) {
 function TextAreaEditor({ value, onChange }: PropertyEditorProps) {
   return (
     <Input.TextArea
+      className="rounded-md border-[#d8dee9] text-sm shadow-none"
       autoSize={{ minRows: 2, maxRows: 5 }}
       value={typeof value === "string" ? value : ""}
       onChange={(event) => onChange(event.target.value)}
@@ -45,6 +47,7 @@ function NumberEditor({ value, onChange }: PropertyEditorProps) {
   return (
     <InputNumber
       className="w-full!"
+      size="small"
       value={typeof value === "number" ? value : 0}
       onChange={(nextValue) => onChange(nextValue ?? 0)}
     />
@@ -63,6 +66,7 @@ function BooleanEditor({ value, onChange }: PropertyEditorProps) {
 function SelectEditor({ value, options, onChange }: PropertyEditorProps) {
   return (
     <Select
+      size="small"
       value={typeof value === "string" ? value : undefined}
       options={options?.map((option) => ({
         label: option.label,
@@ -75,8 +79,9 @@ function SelectEditor({ value, options, onChange }: PropertyEditorProps) {
 
 function ColorEditor({ value, onChange }: PropertyEditorProps) {
   return (
-    <Input
+    <EzyrInput
       type="color"
+      className="p-1"
       value={typeof value === "string" ? value : "#ffffff"}
       onChange={(event) => onChange(event.target.value)}
     />
@@ -85,7 +90,7 @@ function ColorEditor({ value, onChange }: PropertyEditorProps) {
 
 function SpacingEditor({ value, onChange }: PropertyEditorProps) {
   return (
-    <Input
+    <EzyrInput
       value={typeof value === "string" ? value : ""}
       placeholder="0px"
       onChange={(event) => onChange(event.target.value)}

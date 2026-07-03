@@ -7,8 +7,11 @@
   --panel: #ffffff;
   --panel-muted: #f8fafc;
   --border: #d8dee9;
+  --border-soft: #e4e7ec;
   --brand: #0f8ca8;
   --brand-strong: #08708a;
+  --brand-soft: #e6f6fa;
+  --brand-wash: #f1fbfe;
   --canvas-grid: rgba(15, 140, 168, 0.16);
 }
 
@@ -30,6 +33,33 @@ body {
   height: 100%;
 }
 
+* {
+  scrollbar-color: #9aa6b5 transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #9aa6b5;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #7c8797;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 button,
 input,
 textarea,
@@ -49,58 +79,148 @@ select {
   background-size: 24px 24px;
 }
 
+.ezyr-input.ant-input {
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+.ezyr-input.ant-input-filled {
+  background: var(--panel-muted) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.ezyr-input.ant-input-filled:hover,
+.ezyr-input.ant-input-filled:focus,
+.ezyr-input.ant-input-filled-focused,
+.ezyr-input.ant-input-outlined:hover,
+.ezyr-input.ant-input-outlined:focus,
+.ezyr-input.ant-input-outlined-focused {
+  background: var(--panel) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+.ezyr-tabs.ant-tabs,
 .builder-sidebar-tabs.ant-tabs {
   display: flex;
   flex-direction: column;
 }
 
+.ezyr-tabs .ant-tabs-nav,
 .builder-sidebar-tabs .ant-tabs-nav {
-  margin: 0 0 14px;
+  margin: 0 0 8px;
 }
 
+.builder-sidebar-tabs .ant-tabs-nav {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.ezyr-tabs .ant-tabs-nav::before,
 .builder-sidebar-tabs .ant-tabs-nav::before {
   border-color: var(--border);
 }
 
+.builder-sidebar-tabs .ant-tabs-nav-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.ezyr-tabs .ant-tabs-tab,
 .builder-sidebar-tabs .ant-tabs-tab {
-  padding: 14px 0 12px;
+  padding: 10px 0 9px;
+  font-size: 13px;
+}
+
+.builder-sidebar-tabs .ant-tabs-tab {
+  justify-content: center;
+  margin: 0 !important;
+  text-align: center;
+}
+
+.ezyr-tabs .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 24px;
 }
 
 .builder-sidebar-tabs .ant-tabs-tab + .ant-tabs-tab {
-  margin-left: 28px;
+  margin-left: 0;
 }
 
+.builder-sidebar-tabs .ant-tabs-tab-btn {
+  width: 100%;
+}
+
+.ezyr-tabs .ant-tabs-content-holder,
+.ezyr-tabs .ant-tabs-content,
+.ezyr-tabs .ant-tabs-tabpane,
 .builder-sidebar-tabs .ant-tabs-content-holder,
 .builder-sidebar-tabs .ant-tabs-content,
 .builder-sidebar-tabs .ant-tabs-tabpane {
   min-height: 0;
 }
 
+.builder-sidebar-tabs .ant-tabs-content-holder {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.builder-sidebar-tabs .ant-tabs-content {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.builder-sidebar-tabs .ant-tabs-tabpane-active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ezyr-tabs .ant-tabs-tabpane,
 .builder-sidebar-tabs .ant-tabs-tabpane {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .builder-properties-collapse .ant-collapse-header {
   align-items: center !important;
-  padding: 14px 0 !important;
+  padding: 8px 0 !important;
   color: #172033 !important;
   font-weight: 500;
 }
 
 .builder-properties-collapse .ant-collapse-content-box {
-  padding: 2px 0 18px !important;
+  padding: 0 0 10px !important;
 }
 
 .builder-properties-collapse .ant-form-item {
-  margin-bottom: 18px;
+  margin-bottom: 0;
 }
 
 .builder-properties-collapse .ant-form-item-label {
-  padding-bottom: 6px;
+  padding-bottom: 3px;
 }
 
 .builder-properties-collapse .ant-form-item-label > label {
   color: #344054;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
+  height: auto;
+}
+
+.builder-property-form .ant-collapse-item {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.builder-property-form .ant-input,
+.builder-property-form .ant-select-selector,
+.builder-property-form .ant-input-number {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.builder-property-form .ant-select-single {
+  height: 30px;
 }

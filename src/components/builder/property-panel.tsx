@@ -2,7 +2,7 @@
 
 import { Button, Collapse, Form, Layout, Tooltip, Typography } from "antd";
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
-import type { JsonValue } from "@/schemas/app-spec";
+import { EzyrPanelHeader } from "@/components/ui";
 import {
   groupProperties,
   propertyEditorRegistry,
@@ -12,11 +12,14 @@ import { hydrateAppNode } from "@/features/builder/state/normalization";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { propertyRegistry } from "@/registry/property";
+import type { JsonValue } from "@/schemas/app-spec";
 import {
   updateNodeProps,
   updateNodeStyle,
 } from "@/store/slices/builder-document-slice";
 import { toggleRightPanel } from "@/store/slices/builder-slice";
+
+type PropertySource = "props" | "style" | "bindings" | "events";
 
 export function PropertyPanel() {
   const dispatch = useAppDispatch();
@@ -41,7 +44,7 @@ export function PropertyPanel() {
     : [];
 
   const updateProperty = (
-    propertySource: "props" | "style" | "bindings" | "events",
+    propertySource: PropertySource,
     propertyKey: string,
     value: JsonValue,
   ) => {
@@ -73,7 +76,7 @@ export function PropertyPanel() {
     <Layout.Sider
       collapsed={isCollapsed}
       collapsedWidth={56}
-      width={320}
+      width={340}
       className="ezyr-panel border-l transition-all duration-200"
       theme="light"
       collapsible={false}
@@ -95,77 +98,84 @@ export function PropertyPanel() {
         </aside>
       ) : (
         <aside className="flex h-full min-h-0 flex-col">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <SlidersHorizontal
-                size={16}
-                className="shrink-0 text-[#0f8ca8]"
-              />
-              <Typography.Text className="truncate font-semibold text-[#172033]">
-                Properties
-              </Typography.Text>
-            </div>
-            <Tooltip title="Collapse properties">
-              <Button
-                aria-label="Collapse properties panel"
-                icon={<ChevronRight size={16} />}
-                size="small"
-                type="text"
-                onClick={() => dispatch(toggleRightPanel())}
-              />
-            </Tooltip>
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <EzyrPanelHeader
+            title="Properties"
+            icon={<SlidersHorizontal size={16} className="text-[#0f8ca8]" />}
+            action={
+              <Tooltip title="Collapse properties">
+                <Button
+                  aria-label="Collapse properties panel"
+                  icon={<ChevronRight size={16} />}
+                  size="small"
+                  type="text"
+                  onClick={() => dispatch(toggleRightPanel())}
+                />
+              </Tooltip>
+            }
+          />
+          <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
             {selectedAppNode ? (
-              <Form layout="vertical" size="small">
-                <div className="mb-3 rounded-md border border-[#d8dee9] bg-[#f8fafc] px-3 py-2">
-                  <Typography.Text className="block text-xs font-medium text-[#667085]">
+              <Form
+                className="builder-property-form"
+                layout="vertical"
+                size="small"
+              >
+                <div className="mb-2 rounded-md border border-[#d8dee9] bg-[#f8fafc] px-3 py-2">
+                  <Typography.Text className="block text-[11px] font-medium text-[#667085]">
                     Selected
                   </Typography.Text>
-                  <Typography.Text className="block truncate text-sm font-semibold text-[#172033]">
+                  <Typography.Text className="block truncate text-sm font-semibold leading-5 text-[#172033]">
                     {selectedAppNode.type} / {selectedAppNode.id}
                   </Typography.Text>
                 </div>
                 <Collapse
                   className="builder-properties-collapse"
-                  defaultActiveKey={propertyGroups.map(
-                    (group) => group.category,
-                  )}
+                  defaultActiveKey={propertyGroups
+                    .slice(0, 4)
+                    .map((group) => group.category)}
                   ghost
                   items={propertyGroups.map((group) => ({
                     key: group.category,
-                    label: group.category,
-                    children: group.properties.map((property) => {
-                      const editor = propertyEditorRegistry.get(
-                        property.editor,
-                      );
-                      const Editor = editor?.component;
+                    label: (
+                      <span className="text-[13px] font-semibold text-[#172033]">
+                        {group.category}
+                      </span>
+                    ),
+                    children: (
+                      <div className="grid gap-2">
+                        {group.properties.map((property) => {
+                          const editor = propertyEditorRegistry.get(
+                            property.editor,
+                          );
+                          const Editor = editor?.component;
 
-                      return (
-                        <Form.Item label={property.label} key={property.id}>
-                          {Editor ? (
-                            <Editor
-                              value={readPropertyValue(
-                                selectedAppNode,
-                                property,
+                          return (
+                            <Form.Item label={property.label} key={property.id}>
+                              {Editor ? (
+                                <Editor
+                                  value={readPropertyValue(
+                                    selectedAppNode,
+                                    property,
+                                  )}
+                                  options={property.options}
+                                  onChange={(value) =>
+                                    updateProperty(
+                                      property.valueSource,
+                                      property.valueKey,
+                                      value,
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <Typography.Text type="danger">
+                                  Missing editor: {property.editor}
+                                </Typography.Text>
                               )}
-                              options={property.options}
-                              onChange={(value) =>
-                                updateProperty(
-                                  property.valueSource,
-                                  property.valueKey,
-                                  value,
-                                )
-                              }
-                            />
-                          ) : (
-                            <Typography.Text type="danger">
-                              Missing editor: {property.editor}
-                            </Typography.Text>
-                          )}
-                        </Form.Item>
-                      );
-                    }),
+                            </Form.Item>
+                          );
+                        })}
+                      </div>
+                    ),
                   }))}
                 />
               </Form>

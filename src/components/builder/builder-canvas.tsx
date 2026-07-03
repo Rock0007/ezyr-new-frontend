@@ -45,7 +45,7 @@ function EditableNode({
   onSelect: (nodeId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: node.id });
-  const renderer = rendererRegistry.get(node.type);
+  const renderer = rendererRegistry.resolve(node.type);
   const children = node.children.map((child) => (
     <EditableNode
       key={child.id}

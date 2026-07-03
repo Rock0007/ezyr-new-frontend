@@ -4,6 +4,7 @@ import { Button } from "antd";
 import type { ButtonProps } from "antd";
 import type { ComponentAdapterProps } from "@/registry/types";
 import { getBooleanProp, getStringProp } from "@/runtime/props";
+import { resolveNodeStyle } from "@/runtime/style";
 
 const buttonTypeByVariant: Record<string, ButtonProps["type"]> = {
   primary: "primary",
@@ -25,6 +26,7 @@ export function AntButtonAdapter({ node }: ComponentAdapterProps) {
       disabled={disabled}
       loading={loading}
       size={size === "large" || size === "small" ? size : "middle"}
+      style={resolveNodeStyle(node.style)}
       type={buttonTypeByVariant[variant] ?? "primary"}
     >
       {text}

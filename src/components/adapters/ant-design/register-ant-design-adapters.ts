@@ -14,31 +14,31 @@ export function registerAntDesignAdapters(): void {
     return;
   }
 
-  adapterRegistry.register({
+  adapterRegistry.upsert({
     id: "ant.Frame",
     componentType: "Frame",
     provider: "ant-design",
     component: AntFrameAdapter,
   });
-  adapterRegistry.register({
+  adapterRegistry.upsert({
     id: "ant.Section",
     componentType: "Section",
     provider: "ant-design",
     component: AntSectionAdapter,
   });
-  adapterRegistry.register({
+  adapterRegistry.upsert({
     id: "ant.Text",
     componentType: "Text",
     provider: "ant-design",
     component: AntTextAdapter,
   });
-  adapterRegistry.register({
+  adapterRegistry.upsert({
     id: "ant.Button",
     componentType: "Button",
     provider: "ant-design",
     component: AntButtonAdapter,
   });
-  adapterRegistry.register({
+  adapterRegistry.upsert({
     id: "ant.Image",
     componentType: "Image",
     provider: "ant-design",
@@ -49,7 +49,7 @@ export function registerAntDesignAdapters(): void {
       return;
     }
 
-    adapterRegistry.register({
+    adapterRegistry.upsert({
       id: `ant.${definition.id}`,
       componentType: definition.id,
       provider: "ant-design",

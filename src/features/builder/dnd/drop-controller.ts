@@ -37,6 +37,30 @@ export function validateDropIntent(
   }
 
   if (
+    definition.runtime.mode === "runtime-only" ||
+    definition.runtime.mode === "workflow-triggered"
+  ) {
+    return {
+      isValid: false,
+      message: `${definition.displayName} is configured from runtime workflows, not the canvas.`,
+    };
+  }
+
+  if (intent.componentType && !definition.canvas.draggable) {
+    return {
+      isValid: false,
+      message: `${definition.displayName} cannot be dragged onto the canvas.`,
+    };
+  }
+
+  if (!parentDefinition.canvas.droppable) {
+    return {
+      isValid: false,
+      message: `${parentDefinition.displayName} cannot contain child components.`,
+    };
+  }
+
+  if (
     intent.draggedNodeId &&
     (intent.draggedNodeId === parent.id ||
       isDescendantOf(parent.id, intent.draggedNodeId, nodes))
@@ -48,8 +72,8 @@ export function validateDropIntent(
   }
 
   if (
-    definition.childrenRules.allowedParents &&
-    !definition.childrenRules.allowedParents.includes(parent.type)
+    definition.composition.allowedParents &&
+    !definition.composition.allowedParents.includes(parent.type)
   ) {
     return {
       isValid: false,
@@ -58,8 +82,8 @@ export function validateDropIntent(
   }
 
   if (
-    parentDefinition.childrenRules.allowedChildren &&
-    !parentDefinition.childrenRules.allowedChildren.includes(componentType)
+    parentDefinition.composition.allowedChildren &&
+    !parentDefinition.composition.allowedChildren.includes(componentType)
   ) {
     return {
       isValid: false,
@@ -68,8 +92,8 @@ export function validateDropIntent(
   }
 
   if (
-    parentDefinition.childrenRules.maxChildren !== undefined &&
-    parent.childIds.length >= parentDefinition.childrenRules.maxChildren
+    parentDefinition.composition.maxChildren !== undefined &&
+    parent.childIds.length >= parentDefinition.composition.maxChildren
   ) {
     return {
       isValid: false,

@@ -16,11 +16,16 @@ import {
   Workflow,
 } from "lucide-react";
 import { EzyrInput, EzyrPanelHeader, EzyrTabs } from "@/components/ui";
-import { BUILDER_COMPONENTS } from "@/constants/builder";
+import {
+  BUILDER_COMPONENTS,
+  BUILDER_TAXONOMY_LABELS,
+  BUILDER_TAXONOMY_ORDER,
+} from "@/constants/builder";
 import { validateDropIntent } from "@/features/builder/dnd";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { componentRegistry } from "@/registry/component";
+import type { ComponentTaxonomy } from "@/registry/types";
 import { insertNode } from "@/store/slices/builder-document-slice";
 import { toggleConsole } from "@/store/slices/builder-slice";
 import { selectOne } from "@/store/slices/selection-slice";
@@ -49,12 +54,10 @@ function ComponentPaletteItem({
   component: (typeof BUILDER_COMPONENTS)[number];
   onInsert: (componentType: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `palette-${component.id}`,
-      data: { componentType: component.kind },
-    });
-  void transform;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `palette-${component.id}`,
+    data: { componentType: component.kind },
+  });
 
   return (
     <button
@@ -76,7 +79,7 @@ function ComponentPaletteItem({
           {component.name}
         </span>
         <span className="block truncate text-[11px] leading-4 capitalize text-[#667085]">
-          {component.category}
+          {component.taxonomyLabel}
         </span>
       </span>
       <GripVertical
@@ -89,7 +92,9 @@ function ComponentPaletteItem({
 
 export function LeftSidebar() {
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [activeTaxonomy, setActiveTaxonomy] = useState<
+    ComponentTaxonomy | "all"
+  >("all");
   const dispatch = useAppDispatch();
   const isCollapsed = useAppSelector(
     (state) => state.builder.isLeftPanelCollapsed,
@@ -107,15 +112,18 @@ export function LeftSidebar() {
     const normalizedQuery = query.trim().toLowerCase();
     return BUILDER_COMPONENTS.filter(
       (component) =>
-        (activeCategory === "all" || component.category === activeCategory) &&
+        (activeTaxonomy === "all" || component.taxonomy === activeTaxonomy) &&
         (!normalizedQuery ||
           component.name.toLowerCase().includes(normalizedQuery) ||
-          component.category.toLowerCase().includes(normalizedQuery) ||
+          component.taxonomyLabel.toLowerCase().includes(normalizedQuery) ||
           component.description.toLowerCase().includes(normalizedQuery)),
     );
-  }, [activeCategory, query]);
-  const categories = useMemo(
-    () => Array.from(new Set(BUILDER_COMPONENTS.map((item) => item.category))),
+  }, [activeTaxonomy, query]);
+  const taxonomies = useMemo(
+    () =>
+      BUILDER_TAXONOMY_ORDER.filter((taxonomy) =>
+        BUILDER_COMPONENTS.some((item) => item.taxonomy === taxonomy),
+      ),
     [],
   );
 
@@ -193,19 +201,21 @@ export function LeftSidebar() {
                 onChange={(event) => setQuery(event.target.value)}
               />
               <div className="mt-2 flex gap-1 overflow-x-auto pb-1">
-                {["all", ...categories].map((category) => (
+                {(["all", ...taxonomies] as const).map((taxonomy) => (
                   <button
                     className={[
                       "shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium capitalize transition",
-                      activeCategory === category
+                      activeTaxonomy === taxonomy
                         ? "border-[#0f8ca8] bg-[#e6f6fa] text-[#08708a]"
                         : "border-[#d8dee9] bg-white text-[#667085] hover:border-[#0f8ca8] hover:text-[#08708a]",
                     ].join(" ")}
-                    key={category}
+                    key={taxonomy}
                     type="button"
-                    onClick={() => setActiveCategory(category)}
+                    onClick={() => setActiveTaxonomy(taxonomy)}
                   >
-                    {category}
+                    {taxonomy === "all"
+                      ? "All"
+                      : BUILDER_TAXONOMY_LABELS[taxonomy]}
                   </button>
                 ))}
               </div>

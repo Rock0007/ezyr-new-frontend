@@ -8,11 +8,31 @@ export class TypedRegistry<TEntry extends RegistryEntry> {
   private readonly entries = new Map<RegistryKey, TEntry>();
 
   constructor(initialEntries: readonly TEntry[] = []) {
-    initialEntries.forEach((entry) => this.register(entry));
+    initialEntries.forEach((entry) => this.addInitialEntry(entry));
+  }
+
+  private addInitialEntry(entry: TEntry): void {
+    if (this.entries.has(entry.id)) {
+      throw new Error(`Registry entry "${entry.id}" is already registered.`);
+    }
+
+    this.entries.set(entry.id, entry);
   }
 
   register(entry: TEntry): void {
+    if (this.entries.has(entry.id)) {
+      throw new Error(`Registry entry "${entry.id}" is already registered.`);
+    }
+
     this.entries.set(entry.id, entry);
+  }
+
+  replace(entry: TEntry): void {
+    this.entries.set(entry.id, entry);
+  }
+
+  upsert(entry: TEntry): void {
+    this.replace(entry);
   }
 
   unregister(id: RegistryKey): void {
@@ -29,6 +49,10 @@ export class TypedRegistry<TEntry extends RegistryEntry> {
 
   list(): readonly TEntry[] {
     return Array.from(this.entries.values());
+  }
+
+  getAll(): readonly TEntry[] {
+    return this.list();
   }
 
   search(options: RegistrySearchOptions = {}): readonly TEntry[] {

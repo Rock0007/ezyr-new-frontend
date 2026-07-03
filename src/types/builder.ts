@@ -9,6 +9,7 @@ export type BuilderComponent = {
   kind: BuilderComponentKind;
   name: string;
   description: string;
-  category: string;
+  taxonomy: string;
+  taxonomyLabel: string;
   icon: string;
 };

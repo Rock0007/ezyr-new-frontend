@@ -4,6 +4,7 @@ import * as Antd from "antd";
 import { createElement, isValidElement, type ComponentType } from "react";
 import type { ComponentAdapterProps } from "@/registry/types";
 import type { JsonObject, JsonValue } from "@/schemas/app-spec";
+import { resolveNodeStyle } from "@/runtime/style";
 
 type GenericAntComponent = ComponentType<Record<string, unknown>>;
 
@@ -28,7 +29,7 @@ function toProps(
 ): Record<string, unknown> {
   return {
     ...props,
-    style,
+    style: resolveNodeStyle(style),
   };
 }
 

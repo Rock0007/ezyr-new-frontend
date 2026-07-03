@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { AppNode } from "@/schemas/app-spec";
 import { adapterRegistry } from "@/registry/adapter";
+import { RuntimeDiagnostic } from "@/runtime/diagnostics";
 
 type RenderAdapterProps = {
   readonly node: AppNode;
@@ -14,9 +15,12 @@ export function RenderAdapter({ node, children }: RenderAdapterProps) {
 
   if (!adapter) {
     return (
-      <div data-ezyr-runtime-error="missing-adapter">
-        Missing adapter for {node.type}
-      </div>
+      <RuntimeDiagnostic
+        code="missing-adapter"
+        message={`Missing adapter for ${node.type}.`}
+        nodeId={node.id}
+        title="Missing adapter"
+      />
     );
   }
 

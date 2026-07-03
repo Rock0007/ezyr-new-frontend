@@ -1,5 +1,6 @@
 import { TypedRegistry } from "@/registry/create-registry";
 import { coreComponentDefinitions } from "@/registry/component/definitions";
+import type { AppNode, JsonValue } from "@/schemas/app-spec";
 import type { PropertyDefinition } from "@/registry/types";
 
 export type ComponentPropertyDefinition = PropertyDefinition & {
@@ -295,6 +296,24 @@ export class PropertyRegistry extends TypedRegistry<ComponentPropertyDefinition>
     return this.list().filter(
       (property) => property.componentType === componentType,
     );
+  }
+
+  validateValue(
+    propertyId: string,
+    value: JsonValue,
+    node: AppNode,
+  ): string | null {
+    const property = this.get(propertyId);
+
+    if (!property) {
+      return `Unknown property "${propertyId}".`;
+    }
+
+    if (property.componentType !== node.type) {
+      return `"${property.label}" does not belong to "${node.type}".`;
+    }
+
+    return property.validate?.(value, node) ?? null;
   }
 }
 

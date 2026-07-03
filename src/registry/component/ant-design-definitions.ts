@@ -1,15 +1,72 @@
-import type { ComponentCategory, ComponentDefinition } from "@/registry/types";
+import type {
+  ComponentCategory,
+  ComponentDefinition,
+  ComponentRuntimeMode,
+  ComponentTaxonomy,
+} from "@/registry/types";
 
 type AntComponentSeed = {
   readonly id: string;
   readonly category: ComponentCategory;
+  readonly taxonomy?: ComponentTaxonomy;
+  readonly runtimeMode?: ComponentRuntimeMode;
   readonly description: string;
   readonly defaultProps?: ComponentDefinition["defaultProps"];
   readonly childrenRules?: ComponentDefinition["childrenRules"];
+  readonly editing?: ComponentDefinition["editing"];
+  readonly canvas?: Partial<ComponentDefinition["canvas"]>;
 };
 
 const containerRules: ComponentDefinition["childrenRules"] = { minChildren: 0 };
 const leafRules: ComponentDefinition["childrenRules"] = { maxChildren: 0 };
+const workflowTriggeredComponents = new Set([
+  "BackTop",
+  "Drawer",
+  "Dropdown",
+  "FloatButton",
+  "Modal",
+  "Popconfirm",
+  "Popover",
+  "Tooltip",
+  "Tour",
+]);
+const miniBuilderComponents: Record<string, string> = {
+  Carousel: "carousel-editor",
+  Form: "form-builder",
+  Table: "table-column-editor",
+  Tabs: "tabs-editor",
+};
+
+function taxonomyFromCategory(
+  category: ComponentCategory,
+  id: string,
+): ComponentTaxonomy {
+  if (workflowTriggeredComponents.has(id)) {
+    return "overlay";
+  }
+
+  if (id === "Button" || id === "Segmented" || id === "Switch") {
+    return "interactive";
+  }
+
+  const taxonomyByCategory: Record<ComponentCategory, ComponentTaxonomy> = {
+    content: "content",
+    data: "data-display",
+    feedback: "feedback",
+    input: "data-entry",
+    layout: "layout",
+    navigation: "navigation",
+  };
+
+  return taxonomyByCategory[category];
+}
+
+function runtimeModeForSeed(seed: AntComponentSeed): ComponentRuntimeMode {
+  return (
+    seed.runtimeMode ??
+    (workflowTriggeredComponents.has(seed.id) ? "workflow-triggered" : "rendered")
+  );
+}
 
 const antComponentSeeds: readonly AntComponentSeed[] = [
   {
@@ -482,34 +539,58 @@ const antComponentSeeds: readonly AntComponentSeed[] = [
 ];
 
 export const antDesignComponentDefinitions: readonly ComponentDefinition[] =
-  antComponentSeeds.map((seed) => ({
-    id: seed.id,
-    displayName: seed.id,
-    description: seed.description,
-    icon: "component",
-    category: seed.category,
-    version: "5.29.3",
-    defaultProps: seed.defaultProps ?? {},
-    editableProps: [
-      "children",
-      "text",
-      "title",
-      "placeholder",
-      "type",
-      "size",
-      "disabled",
-      "loading",
-      "status",
-      "variant",
-      "color",
-      "width",
-      "height",
-      "margin",
-      "padding",
-      "background",
-      "radius",
-    ],
-    events: ["click", "focus", "blur", "change"],
-    slots: seed.childrenRules?.maxChildren === 0 ? [] : ["children"],
-    childrenRules: seed.childrenRules ?? containerRules,
-  }));
+  antComponentSeeds.map((seed) => {
+    const childrenRules = seed.childrenRules ?? containerRules;
+    const acceptsChildren = childrenRules.maxChildren !== 0;
+    const runtimeMode = runtimeModeForSeed(seed);
+    const isCanvasInsertable =
+      runtimeMode !== "runtime-only" && runtimeMode !== "workflow-triggered";
+    const miniBuilderId = miniBuilderComponents[seed.id];
+
+    return {
+      id: seed.id,
+      displayName: seed.id,
+      description: seed.description,
+      icon: "component",
+      category: seed.category,
+      taxonomy: seed.taxonomy ?? taxonomyFromCategory(seed.category, seed.id),
+      version: "5.29.3",
+      defaultProps: seed.defaultProps ?? {},
+      editableProps: [
+        "children",
+        "text",
+        "title",
+        "placeholder",
+        "type",
+        "size",
+        "disabled",
+        "loading",
+        "status",
+        "variant",
+        "color",
+        "width",
+        "height",
+        "margin",
+        "padding",
+        "background",
+        "radius",
+      ],
+      events: ["click", "focus", "blur", "change"],
+      slots: acceptsChildren ? ["children"] : [],
+      childrenRules,
+      canvas: {
+        draggable: isCanvasInsertable,
+        droppable: acceptsChildren,
+        nestable: acceptsChildren,
+        acceptsChildren,
+        ...seed.canvas,
+      },
+      runtime: { mode: runtimeMode },
+      editing:
+        seed.editing ??
+        (miniBuilderId
+          ? { panel: "mini-builder", miniBuilderId }
+          : { panel: "standard" }),
+      composition: childrenRules,
+    };
+  });

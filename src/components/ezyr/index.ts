@@ -1,6 +1,11 @@
 export { EzyrButton } from "./ezyr-button";
+export { EzyrCard } from "./ezyr-card";
 export { EzyrFrame } from "./ezyr-frame";
 export { EzyrGeneric } from "./ezyr-generic";
 export { EzyrImage } from "./ezyr-image";
+export { EzyrInput } from "./ezyr-input";
+export { EzyrModal } from "./ezyr-modal";
 export { EzyrSection } from "./ezyr-section";
+export { EzyrTable } from "./ezyr-table";
+export { EzyrTabs } from "./ezyr-tabs";
 export { EzyrText } from "./ezyr-text";

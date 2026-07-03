@@ -176,7 +176,7 @@ function ComponentDragOverlay({ componentType }: { componentType: string }) {
           {component?.name ?? componentType}
         </span>
         <span className="block truncate text-[11px] leading-4 capitalize text-[#667085]">
-          {component?.category ?? "component"}
+          {component?.taxonomyLabel ?? "Component"}
         </span>
       </span>
     </div>
@@ -316,7 +316,12 @@ export function BuilderWorkspace() {
         const componentType = getComponentType(event) ?? "Unknown";
         const activatorEvent = event.activatorEvent;
 
-        if ("clientX" in activatorEvent && "clientY" in activatorEvent) {
+        if (
+          "clientX" in activatorEvent &&
+          "clientY" in activatorEvent &&
+          typeof activatorEvent.clientX === "number" &&
+          typeof activatorEvent.clientY === "number"
+        ) {
           lastPointerPositionRef.current = {
             x: activatorEvent.clientX,
             y: activatorEvent.clientY,

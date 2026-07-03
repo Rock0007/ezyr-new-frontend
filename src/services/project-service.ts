@@ -2,9 +2,9 @@ import type { ProjectSummary } from "@/types/project";
 
 export async function getProjectSummary(): Promise<ProjectSummary> {
   return {
-    id: "ezyr-demo-project",
-    name: "Untitled Ezyr App",
+    id: "northstar-capital-os",
+    name: "Northstar Capital OS",
     status: "draft",
-    updatedAt: new Date(0).toISOString(),
+    updatedAt: "2026-07-04T00:00:00.000Z",
   };
 }

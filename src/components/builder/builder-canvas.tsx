@@ -1,8 +1,22 @@
 "use client";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { Button, Tooltip, Typography } from "antd";
-import { FilePlus2, Grid2X2, Maximize2, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Button, Dropdown, Segmented, Tooltip, Typography } from "antd";
+import type { MenuProps } from "antd";
+import {
+  ClipboardCopy,
+  ClipboardPaste,
+  CopyPlus,
+  FilePlus2,
+  Grid2X2,
+  Maximize2,
+  Minus,
+  MoveRight,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import {
   memo,
   useCallback,
@@ -16,6 +30,10 @@ import {
   type ReactNode,
 } from "react";
 import type { AppNode } from "@/schemas/app-spec";
+import {
+  cloneClipboardRootNodes,
+  createClipboard,
+} from "@/features/builder/clipboard";
 import {
   CANVAS_STAGE_SIZE,
   CANVAS_ZOOM_STEP,
@@ -31,9 +49,10 @@ import {
 } from "@/features/builder/selection";
 import {
   collectSubtreeIds,
+  hydrateAppNode,
   isDescendantOf,
 } from "@/features/builder/state/normalization";
-import { selectActiveRootNode } from "@/features/builder/state/selectors";
+import type { NormalizedBuilderNode } from "@/features/builder/state/types";
 import { resolveShortcut } from "@/features/builder/shortcuts";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
@@ -44,9 +63,13 @@ import {
   createPage,
   deletePage,
   setActivePage,
+  setClipboard,
+  updatePageCanvasPosition,
 } from "@/store/slices/builder-document-slice";
 import {
+  type CanvasPageViewMode,
   resetCanvasViewport,
+  setPageViewMode,
   setCanvasPan,
   setZoom,
   toggleGrid,
@@ -71,6 +94,9 @@ const viewportWidthPx = {
   mobile: 390,
 };
 
+const PAGE_SEQUENCE_GAP = 96;
+const PAGE_SEQUENCE_TOP = 0;
+
 let localPageSequence = 1;
 
 function createLocalId(prefix: string): string {
@@ -80,6 +106,24 @@ function createLocalId(prefix: string): string {
 
   localPageSequence += 1;
   return `${prefix}-${localPageSequence}`;
+}
+
+function getTopLevelNodeIds(
+  nodeIds: readonly string[],
+  nodes: Record<string, NormalizedBuilderNode>,
+): string[] {
+  return nodeIds.filter((nodeId) => {
+    if (!nodes[nodeId]) {
+      return false;
+    }
+
+    return !nodeIds.some(
+      (candidateId) =>
+        candidateId !== nodeId &&
+        nodes[candidateId] &&
+        isDescendantOf(nodeId, candidateId, nodes),
+    );
+  });
 }
 
 function canScrollInDirection(
@@ -138,6 +182,7 @@ function hasScrollableWheelTarget(
 
 type EditableNodeProps = {
   node: AppNode;
+  pageId: string;
   rootNodeId: string;
   selectedIds: readonly string[];
   hoveredId: string | null;
@@ -145,12 +190,14 @@ type EditableNodeProps = {
   dropTargetId: string | null;
   isDropValid: boolean;
   onSelect: (nodeId: string, event: MouseEvent<HTMLDivElement>) => void;
+  onActivatePage: (pageId: string) => void;
   onFocusNode: (nodeId: string) => void;
   onHover: (nodeId: string | null) => void;
 };
 
 const EditableNode = memo(function EditableNode({
   node,
+  pageId,
   rootNodeId,
   selectedIds,
   hoveredId,
@@ -158,6 +205,7 @@ const EditableNode = memo(function EditableNode({
   dropTargetId,
   isDropValid,
   onSelect,
+  onActivatePage,
   onFocusNode,
   onHover,
 }: EditableNodeProps) {
@@ -188,6 +236,7 @@ const EditableNode = memo(function EditableNode({
     <EditableNode
       key={child.id}
       node={child}
+      pageId={pageId}
       rootNodeId={rootNodeId}
       selectedIds={selectedIds}
       hoveredId={hoveredId}
@@ -195,6 +244,7 @@ const EditableNode = memo(function EditableNode({
       dropTargetId={dropTargetId}
       isDropValid={isDropValid}
       onSelect={onSelect}
+      onActivatePage={onActivatePage}
       onFocusNode={onFocusNode}
       onHover={onHover}
     />
@@ -207,6 +257,7 @@ const EditableNode = memo(function EditableNode({
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
+    onActivatePage(pageId);
     onSelect(node.id, event);
   };
   const handleFocus = () => {
@@ -271,6 +322,13 @@ export function BuilderCanvas() {
     pointerId: number;
     start: { x: number; y: number };
   } | null>(null);
+  const pageDragSessionRef = useRef<{
+    pageId: string;
+    pointerId: number;
+    start: { x: number; y: number };
+    position: { x: number; y: number };
+    moved: boolean;
+  } | null>(null);
   const suppressNextClickRef = useRef(false);
   const isSpacePressedRef = useRef(false);
   const [isPanning, setIsPanning] = useState(false);
@@ -280,13 +338,13 @@ export function BuilderCanvas() {
   });
   const {
     viewport,
+    pageViewMode,
     zoom,
     canvasPan,
     isGridVisible,
     snapToGrid,
     gridSize,
   } = useAppSelector((state) => state.builder);
-  const activeRootNode = useAppSelector(selectActiveRootNode);
   const selectedIds = useAppSelector((state) => state.selection.selectedIds);
   const selectionState = useAppSelector((state) => state.selection);
   const hoveredId = useAppSelector((state) => state.selection.hoveredId);
@@ -309,8 +367,43 @@ export function BuilderCanvas() {
   const rootNodeIdsByPage = useAppSelector(
     (state) => state.builderDocument.rootNodeIdsByPage,
   );
+  const clipboard = useAppSelector((state) => state.builderDocument.clipboard);
   const activePage = pagesById[activePageId];
+  const activeNodeId = selectionState.activeNodeId;
+  const activeNode = activeNodeId ? nodes[activeNodeId] : null;
+  const topLevelSelectedIds = useMemo(
+    () => getTopLevelNodeIds(selectedIds, nodes),
+    [nodes, selectedIds],
+  );
+  const canCopy = topLevelSelectedIds.length > 0;
+  const canPaste = Boolean(clipboard);
+  const canMoveToPage =
+    topLevelSelectedIds.length > 0 &&
+    pageOrder.length > 1 &&
+    topLevelSelectedIds.every((nodeId) => nodes[nodeId]?.parentId !== null);
+  const canDeleteSelected = selectedIds.length > 0;
   const pageWidth = viewportWidthPx[viewport];
+  const pageCanvases = useMemo(
+    () =>
+      pageOrder
+        .map((pageId, index) => {
+          const rootId = rootNodeIdsByPage[pageId];
+          const rootNode = rootId ? hydrateAppNode(rootId, nodes) : null;
+
+          return {
+            canvas: pagesById[pageId]?.canvas ?? {
+              x: index * (pageWidth + PAGE_SEQUENCE_GAP),
+              y: PAGE_SEQUENCE_TOP,
+            },
+            pageId,
+            page: pagesById[pageId],
+            rootId,
+            rootNode,
+          };
+        })
+        .filter((entry) => entry.page),
+    [nodes, pageOrder, pageWidth, pagesById, rootNodeIdsByPage],
+  );
   const scale = zoom / 100;
   const gridPixelSize = Math.max(4, gridSize * scale);
   const dropTargetId = dropIndicator?.intent?.targetParentId ?? null;
@@ -506,11 +599,16 @@ export function BuilderCanvas() {
   }, []);
 
   const deleteSelectedNodes = useCallback(() => {
-    if (!rootNodeId || selectedIds.length === 0) {
+    if (selectedIds.length === 0) {
       return;
     }
 
     const selectedSet = new Set(selectedIds);
+    const pageRootIds = new Set(
+      Object.values(rootNodeIdsByPage).filter(
+        (nodeId): nodeId is string => Boolean(nodeId),
+      ),
+    );
     const deletableIds = selectedIds.filter((nodeId) => {
       const node = nodes[nodeId];
 
@@ -519,7 +617,7 @@ export function BuilderCanvas() {
       }
 
       if (node.parentId === null) {
-        return node.id === rootNodeId;
+        return pageRootIds.has(node.id);
       }
 
       return !selectedIds.some(
@@ -529,10 +627,14 @@ export function BuilderCanvas() {
           isDescendantOf(nodeId, candidateId, nodes),
       );
     });
+    if (deletableIds.length === 0) {
+      return;
+    }
+
     const removedIds = deletableIds.flatMap((nodeId) =>
       collectSubtreeIds(nodeId, nodes),
     );
-    const deletesRoot = deletableIds.includes(rootNodeId);
+    const deletesRoot = rootNodeId ? deletableIds.includes(rootNodeId) : false;
     const fallbackParentId = deletesRoot
       ? null
       : (nodes[deletableIds[0] ?? ""]?.parentId ?? rootNodeId);
@@ -549,10 +651,376 @@ export function BuilderCanvas() {
     }
 
     dispatch(clearSelection());
-  }, [dispatch, nodes, rootNodeId, selectedIds]);
+  }, [dispatch, nodes, rootNodeId, rootNodeIdsByPage, selectedIds]);
+
+  const createClonedPage = useCallback(
+    (sourceRootId: string) => {
+      const sourceClipboard = createClipboard([sourceRootId], nodes);
+
+      if (!sourceClipboard) {
+        return;
+      }
+
+      const [rootNode] = cloneClipboardRootNodes(sourceClipboard, (sourceId) =>
+        createLocalId(`${sourceId}-copy`),
+      );
+
+      if (!rootNode) {
+        return;
+      }
+
+      const nextPageNumber = pageOrder.length + 1;
+      const sourcePage = Object.values(pagesById).find(
+        (page) => rootNodeIdsByPage[page.id] === sourceRootId,
+      );
+
+      dispatch(
+        createPage({
+          page: {
+            canvas: {
+              x: (pageOrder.length) * (pageWidth + PAGE_SEQUENCE_GAP),
+              y: PAGE_SEQUENCE_TOP,
+            },
+            id: createLocalId("page"),
+            name: `${sourcePage?.name ?? "Page"} copy`,
+            path: `/page-${nextPageNumber}`,
+          },
+          rootNode,
+        }),
+      );
+      dispatch(selectOne(rootNode.id));
+    },
+    [dispatch, nodes, pageOrder.length, pageWidth, pagesById, rootNodeIdsByPage],
+  );
+
+  const resolvePasteParentId = useCallback(() => {
+    if (!rootNodeId) {
+      return null;
+    }
+
+    if (activeNode) {
+      const definition = componentRegistry.get(activeNode.type);
+
+      if (definition?.canvas.acceptsChildren) {
+        return activeNode.id;
+      }
+
+      if (activeNode.parentId) {
+        return activeNode.parentId;
+      }
+    }
+
+    return rootNodeId;
+  }, [activeNode, rootNodeId]);
+
+  const handleCopy = useCallback(() => {
+    if (!canCopy) {
+      return;
+    }
+
+    dispatch(setClipboard(createClipboard(topLevelSelectedIds, nodes)));
+  }, [canCopy, dispatch, nodes, topLevelSelectedIds]);
+
+  const handleDuplicate = useCallback(() => {
+    if (!canCopy) {
+      return;
+    }
+
+    if (
+      rootNodeId &&
+      topLevelSelectedIds.length === 1 &&
+      topLevelSelectedIds[0] === rootNodeId
+    ) {
+      createClonedPage(rootNodeId);
+      return;
+    }
+
+    const copied = createClipboard(topLevelSelectedIds, nodes);
+    if (!copied) {
+      return;
+    }
+
+    const clonedNodes = cloneClipboardRootNodes(copied, (sourceId) =>
+      createLocalId(`${sourceId}-copy`),
+    );
+    const firstSource = nodes[topLevelSelectedIds[0]];
+    const targetParentId = firstSource?.parentId ?? rootNodeId;
+    const targetParent = targetParentId ? nodes[targetParentId] : null;
+
+    if (!targetParent || clonedNodes.length === 0) {
+      return;
+    }
+
+    const sourceIndexes = topLevelSelectedIds
+      .map((nodeId) => targetParent.childIds.indexOf(nodeId))
+      .filter((index) => index >= 0);
+    const insertIndex =
+      sourceIndexes.length > 0
+        ? Math.max(...sourceIndexes) + 1
+        : targetParent.childIds.length;
+
+    clonedNodes.forEach((node, index) => {
+      dispatch(
+        applyBuilderCommand({
+          type: "insert-node",
+          node,
+          parentId: targetParent.id,
+          index: insertIndex + index,
+        }),
+      );
+    });
+    dispatch(
+      setSelection({
+        activeNodeId: clonedNodes.at(-1)?.id ?? null,
+        focusedNodeId: clonedNodes.at(-1)?.id ?? null,
+        selectedIds: clonedNodes.map((node) => node.id),
+        selectionMode: clonedNodes.length > 1 ? "multi" : "single",
+      }),
+    );
+  }, [
+    canCopy,
+    createClonedPage,
+    dispatch,
+    nodes,
+    rootNodeId,
+    topLevelSelectedIds,
+  ]);
+
+  const handlePaste = useCallback(() => {
+    if (!clipboard) {
+      return;
+    }
+
+    const sourceRootIds = clipboard.rootIds;
+    const isWholePageClipboard =
+      sourceRootIds.length === 1 &&
+      clipboard.nodes[sourceRootIds[0]]?.parentId === null;
+    const clonedNodes = cloneClipboardRootNodes(clipboard, (sourceId) =>
+      createLocalId(`${sourceId}-paste`),
+    );
+
+    if (clonedNodes.length === 0) {
+      return;
+    }
+
+    if (isWholePageClipboard) {
+      const nextPageNumber = pageOrder.length + 1;
+      const rootNode = clonedNodes[0];
+
+      dispatch(
+        createPage({
+          page: {
+            canvas: {
+              x: pageOrder.length * (pageWidth + PAGE_SEQUENCE_GAP),
+              y: PAGE_SEQUENCE_TOP,
+            },
+            id: createLocalId("page"),
+            name: `Page ${nextPageNumber}`,
+            path: `/page-${nextPageNumber}`,
+          },
+          rootNode,
+        }),
+      );
+      dispatch(selectOne(rootNode.id));
+      return;
+    }
+
+    const parentId = resolvePasteParentId();
+    const parent = parentId ? nodes[parentId] : null;
+
+    if (!parent) {
+      return;
+    }
+
+    clonedNodes.forEach((node, index) => {
+      dispatch(
+        applyBuilderCommand({
+          type: "insert-node",
+          node,
+          parentId: parent.id,
+          index: parent.childIds.length + index,
+        }),
+      );
+    });
+    dispatch(
+      setSelection({
+        activeNodeId: clonedNodes.at(-1)?.id ?? null,
+        focusedNodeId: clonedNodes.at(-1)?.id ?? null,
+        selectedIds: clonedNodes.map((node) => node.id),
+        selectionMode: clonedNodes.length > 1 ? "multi" : "single",
+      }),
+    );
+  }, [
+    clipboard,
+    dispatch,
+    nodes,
+    pageOrder.length,
+    pageWidth,
+    resolvePasteParentId,
+  ]);
+
+  const handleMoveToPage = useCallback(
+    (info: Parameters<NonNullable<MenuProps["onClick"]>>[0]) => {
+      const { key } = info;
+      const targetRootId = rootNodeIdsByPage[String(key)];
+      const targetRoot = targetRootId ? nodes[targetRootId] : null;
+
+      if (!targetRoot || !canMoveToPage) {
+        return;
+      }
+
+      topLevelSelectedIds.forEach((nodeId, index) => {
+        dispatch(
+          applyBuilderCommand({
+            type: "move-node",
+            nodeId,
+            parentId: targetRoot.id,
+            index: targetRoot.childIds.length + index,
+          }),
+        );
+      });
+      dispatch(setActivePage(String(key)));
+      dispatch(
+        setSelection({
+          activeNodeId: topLevelSelectedIds.at(-1) ?? null,
+          focusedNodeId: topLevelSelectedIds.at(-1) ?? null,
+          selectedIds: topLevelSelectedIds,
+          selectionMode: topLevelSelectedIds.length > 1 ? "multi" : "single",
+        }),
+      );
+    },
+    [
+      canMoveToPage,
+      dispatch,
+      nodes,
+      rootNodeIdsByPage,
+      topLevelSelectedIds,
+    ],
+  );
+
+  const moveMenuItems: MenuProps["items"] = pageOrder
+    .filter((pageId) => pageId !== activePageId)
+    .map((pageId) => ({
+      key: pageId,
+      label: pagesById[pageId]?.name ?? pageId,
+      disabled: !rootNodeIdsByPage[pageId],
+    }));
+
+  const handleBeautifyPages = useCallback(() => {
+    pageOrder.forEach((pageId, index) => {
+      dispatch(
+        updatePageCanvasPosition({
+          pageId,
+          position: {
+            x: index * (pageWidth + PAGE_SEQUENCE_GAP),
+            y: PAGE_SEQUENCE_TOP,
+          },
+        }),
+      );
+    });
+    dispatch(setPageViewMode("all-pages"));
+  }, [dispatch, pageOrder, pageWidth]);
+
+  const handlePageDragStart = useCallback(
+    (
+      pageId: string,
+      position: { x: number; y: number },
+      event: PointerEvent<HTMLDivElement>,
+    ) => {
+      if (pageViewMode !== "all-pages" || event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pageDragSessionRef.current = {
+        moved: false,
+        pageId,
+        pointerId: event.pointerId,
+        position,
+        start: { x: event.clientX, y: event.clientY },
+      };
+      dispatch(setActivePage(pageId));
+
+      const pageRootNodeId = rootNodeIdsByPage[pageId];
+      if (pageRootNodeId) {
+        dispatch(selectOne(pageRootNodeId));
+      }
+    },
+    [dispatch, pageViewMode, rootNodeIdsByPage],
+  );
+
+  const handlePageDragMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const session = pageDragSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nextPosition = {
+        x: session.position.x + (event.clientX - session.start.x) / scale,
+        y: session.position.y + (event.clientY - session.start.y) / scale,
+      };
+
+      if (
+        Math.abs(event.clientX - session.start.x) > 1 ||
+        Math.abs(event.clientY - session.start.y) > 1
+      ) {
+        session.moved = true;
+      }
+
+      dispatch(
+        updatePageCanvasPosition({
+          pageId: session.pageId,
+          position: nextPosition,
+        }),
+      );
+    },
+    [dispatch, scale],
+  );
+
+  const handlePageDragEnd = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const session = pageDragSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      suppressNextClickRef.current = session.moved;
+      pageDragSessionRef.current = null;
+    },
+    [],
+  );
 
   const handleCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const shortcut = resolveShortcut(event.nativeEvent);
+
+    if (shortcut === "copy") {
+      event.preventDefault();
+      handleCopy();
+      return;
+    }
+
+    if (shortcut === "paste") {
+      event.preventDefault();
+      handlePaste();
+      return;
+    }
+
+    if (shortcut === "duplicate") {
+      event.preventDefault();
+      handleDuplicate();
+      return;
+    }
 
     if (shortcut === "clear-selection") {
       event.preventDefault();
@@ -783,6 +1251,10 @@ export function BuilderCanvas() {
     dispatch(
       createPage({
         page: {
+          canvas: {
+            x: (pageOrder.length) * (pageWidth + PAGE_SEQUENCE_GAP),
+            y: PAGE_SEQUENCE_TOP,
+          },
           id: pageId,
           name: `Page ${pageNumber}`,
           path: `/page-${pageNumber}`,
@@ -791,7 +1263,7 @@ export function BuilderCanvas() {
       }),
     );
     dispatch(selectOne(rootNode.id));
-  }, [dispatch, pageOrder.length]);
+  }, [dispatch, pageOrder.length, pageWidth]);
 
   const handleSwitchPage = useCallback(
     (pageId: string) => {
@@ -834,7 +1306,7 @@ export function BuilderCanvas() {
   return (
     <section className="relative flex h-full min-h-0 flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[#d8dee9] bg-[#f8fafc] px-4">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Typography.Text className="shrink-0 text-xs font-medium text-[#667085]">
             Pages
           </Typography.Text>
@@ -888,8 +1360,81 @@ export function BuilderCanvas() {
               onClick={handleDeleteActivePage}
             />
           </Tooltip>
+          <Segmented<CanvasPageViewMode>
+            size="small"
+            value={pageViewMode}
+            onChange={(value) => dispatch(setPageViewMode(value))}
+            options={[
+              { label: "Active", value: "active-page" },
+              { label: "All pages", value: "all-pages" },
+            ]}
+          />
+          <Tooltip title="Beautify page layout">
+            <Button
+              aria-label="Beautify page layout"
+              icon={<Sparkles size={14} />}
+              size="small"
+              onClick={handleBeautifyPages}
+            />
+          </Tooltip>
+          <div className="mx-1 h-5 w-px shrink-0 bg-[#d8dee9]" />
+          <Tooltip title="Copy selected">
+            <Button
+              aria-label="Copy selected"
+              disabled={!canCopy}
+              icon={<ClipboardCopy size={14} />}
+              size="small"
+              onClick={handleCopy}
+            />
+          </Tooltip>
+          <Tooltip
+            title={
+              rootNodeId && topLevelSelectedIds.includes(rootNodeId)
+                ? "Clone frame as page"
+                : "Clone selected"
+            }
+          >
+            <Button
+              aria-label="Clone selected"
+              disabled={!canCopy}
+              icon={<CopyPlus size={14} />}
+              size="small"
+              onClick={handleDuplicate}
+            />
+          </Tooltip>
+          <Tooltip title="Delete selected">
+            <Button
+              aria-label="Delete selected"
+              disabled={!canDeleteSelected}
+              icon={<Trash2 size={14} />}
+              size="small"
+              danger
+              onClick={deleteSelectedNodes}
+            />
+          </Tooltip>
+          <Tooltip title="Paste">
+            <Button
+              aria-label="Paste"
+              disabled={!canPaste}
+              icon={<ClipboardPaste size={14} />}
+              size="small"
+              onClick={handlePaste}
+            />
+          </Tooltip>
+          <Dropdown
+            disabled={!canMoveToPage}
+            menu={{ items: moveMenuItems, onClick: handleMoveToPage }}
+            trigger={["click"]}
+          >
+            <Button
+              aria-label="Move selected to page"
+              disabled={!canMoveToPage}
+              icon={<MoveRight size={14} />}
+              size="small"
+            />
+          </Dropdown>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <Tooltip title="Zoom out">
             <Button
               aria-label="Zoom out"
@@ -1009,35 +1554,106 @@ export function BuilderCanvas() {
           }}
         >
           <div
-            className="min-h-[680px] rounded-md border border-[#cfd7e4] bg-white shadow-sm transition-shadow"
-            style={{ width: pageWidth }}
-          >
-            {activeRootNode && rootNodeId ? (
-              <EditableNode
-                node={activeRootNode}
-                rootNodeId={rootNodeId}
-                selectedIds={selectedIds}
-                hoveredId={hoveredId}
-                focusedNodeId={focusedNodeId}
-                dropTargetId={dropTargetId}
-                isDropValid={dropIndicator?.isValid ?? true}
-                onSelect={handleNodeSelect}
-                onFocusNode={(nodeId) => dispatch(setFocusedNodeId(nodeId))}
-                onHover={(nodeId) => dispatch(setHoveredId(nodeId))}
-              />
-            ) : (
-              <div className="flex min-h-[420px] items-center justify-center p-8">
-                <div className="max-w-[280px] rounded-md border border-dashed border-[#cfd7e4] bg-[#f8fafc] px-4 py-3 text-center">
-                  <Typography.Text className="block text-sm font-semibold text-[#172033]">
-                    Add a Frame
-                  </Typography.Text>
-                  <Typography.Text className="mt-1 block text-xs leading-5 text-[#667085]">
-                    Drag a Frame here or double-click Frame in the component
-                    library to start this page.
-                  </Typography.Text>
-                </div>
-              </div>
+            className={cn(
+              pageViewMode === "all-pages"
+                ? "relative"
+                : "block",
             )}
+            style={
+              pageViewMode === "all-pages"
+                ? {
+                    height: CANVAS_STAGE_SIZE.height,
+                    width: CANVAS_STAGE_SIZE.width,
+                  }
+                : undefined
+            }
+          >
+            {(pageViewMode === "all-pages"
+              ? pageCanvases
+              : pageCanvases.filter((entry) => entry.pageId === activePageId)
+            ).map((entry) => {
+              const isActivePage = entry.pageId === activePageId;
+
+              return (
+                <div
+                  className={cn(
+                    "min-w-0",
+                    pageViewMode === "all-pages" && "absolute",
+                  )}
+                  key={entry.pageId}
+                  style={
+                    pageViewMode === "all-pages"
+                      ? {
+                          left: entry.canvas.x,
+                          top: entry.canvas.y,
+                          width: pageWidth,
+                        }
+                      : undefined
+                  }
+                >
+                  {pageViewMode === "all-pages" && (
+                    <div
+                      className={cn(
+                        "mb-2 flex h-7 cursor-move select-none items-center justify-between rounded-md border bg-white px-2 text-xs font-semibold shadow-sm",
+                        isActivePage
+                          ? "border-[#0f8ca8] text-[#08708a]"
+                          : "border-[#d8dee9] text-[#667085]",
+                      )}
+                      onPointerCancel={handlePageDragEnd}
+                      onPointerDown={(event) =>
+                        handlePageDragStart(entry.pageId, entry.canvas, event)
+                      }
+                      onPointerMove={handlePageDragMove}
+                      onPointerUp={handlePageDragEnd}
+                    >
+                      <span className="truncate">
+                        {entry.page?.name ?? entry.pageId}
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    className={cn(
+                      "min-h-[680px] rounded-md border bg-white shadow-sm transition-shadow",
+                      isActivePage
+                        ? "border-[#0f8ca8]"
+                        : "border-[#cfd7e4]",
+                    )}
+                    style={{ width: pageWidth }}
+                  >
+                    {entry.rootNode && entry.rootId ? (
+                      <EditableNode
+                        node={entry.rootNode}
+                        pageId={entry.pageId}
+                        rootNodeId={entry.rootId}
+                        selectedIds={selectedIds}
+                        hoveredId={hoveredId}
+                        focusedNodeId={focusedNodeId}
+                        dropTargetId={dropTargetId}
+                        isDropValid={dropIndicator?.isValid ?? true}
+                        onActivatePage={handleSwitchPage}
+                        onSelect={handleNodeSelect}
+                        onFocusNode={(nodeId) =>
+                          dispatch(setFocusedNodeId(nodeId))
+                        }
+                        onHover={(nodeId) => dispatch(setHoveredId(nodeId))}
+                      />
+                    ) : (
+                      <div className="flex min-h-[420px] items-center justify-center p-8">
+                        <div className="max-w-[280px] rounded-md border border-dashed border-[#cfd7e4] bg-[#f8fafc] px-4 py-3 text-center">
+                          <Typography.Text className="block text-sm font-semibold text-[#172033]">
+                            Add a Frame
+                          </Typography.Text>
+                          <Typography.Text className="mt-1 block text-xs leading-5 text-[#667085]">
+                            Drag a Frame here or double-click Frame in the
+                            component library to start this page.
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

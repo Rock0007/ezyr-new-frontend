@@ -14,6 +14,8 @@ export type PropertyOption = {
 
 export type PropertyEditorProps = {
   readonly value: JsonValue | undefined;
+  readonly id?: string;
+  readonly label?: string;
   readonly options?: readonly PropertyOption[];
   readonly onChange: (value: JsonValue) => void;
 };
@@ -23,30 +25,36 @@ export type PropertyEditorDefinition = RegistryEntry & {
   readonly component: ComponentType<PropertyEditorProps>;
 };
 
-function TextEditor({ value, onChange }: PropertyEditorProps) {
+function TextEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <EzyrInput
+      aria-label={label}
+      id={id}
       value={typeof value === "string" ? value : ""}
       onChange={(event) => onChange(event.target.value)}
     />
   );
 }
 
-function TextAreaEditor({ value, onChange }: PropertyEditorProps) {
+function TextAreaEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <Input.TextArea
+      aria-label={label}
       className="rounded-md border-[#d8dee9] text-sm shadow-none"
       autoSize={{ minRows: 2, maxRows: 5 }}
+      id={id}
       value={typeof value === "string" ? value : ""}
       onChange={(event) => onChange(event.target.value)}
     />
   );
 }
 
-function NumberEditor({ value, onChange }: PropertyEditorProps) {
+function NumberEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <InputNumber
+      aria-label={label}
       className="w-full!"
+      id={id}
       size="small"
       value={typeof value === "number" ? value : 0}
       onChange={(nextValue) => onChange(nextValue ?? 0)}
@@ -54,19 +62,23 @@ function NumberEditor({ value, onChange }: PropertyEditorProps) {
   );
 }
 
-function BooleanEditor({ value, onChange }: PropertyEditorProps) {
+function BooleanEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <Switch
+      aria-label={label}
       checked={typeof value === "boolean" ? value : false}
+      id={id}
       onChange={(checked) => onChange(checked)}
     />
   );
 }
 
-function SelectEditor({ value, options, onChange }: PropertyEditorProps) {
+function SelectEditor({ id, label, value, options, onChange }: PropertyEditorProps) {
   return (
     <Select
+      aria-label={label}
       className="w-full!"
+      id={id}
       size="small"
       value={typeof value === "string" ? value : undefined}
       options={options?.map((option) => ({
@@ -78,20 +90,24 @@ function SelectEditor({ value, options, onChange }: PropertyEditorProps) {
   );
 }
 
-function ColorEditor({ value, onChange }: PropertyEditorProps) {
+function ColorEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <EzyrInput
+      aria-label={label}
       type="color"
       className="p-1"
+      id={id}
       value={typeof value === "string" ? value : "#ffffff"}
       onChange={(event) => onChange(event.target.value)}
     />
   );
 }
 
-function SpacingEditor({ value, onChange }: PropertyEditorProps) {
+function SpacingEditor({ id, label, value, onChange }: PropertyEditorProps) {
   return (
     <EzyrInput
+      aria-label={label}
+      id={id}
       value={typeof value === "string" ? value : ""}
       placeholder="0px"
       onChange={(event) => onChange(event.target.value)}

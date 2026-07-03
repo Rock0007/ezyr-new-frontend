@@ -7,9 +7,12 @@ import {
 } from "@/features/builder/canvas";
 import type { BuilderMode, BuilderViewport } from "@/types/builder";
 
+export type CanvasPageViewMode = "active-page" | "all-pages";
+
 type BuilderState = {
   mode: BuilderMode;
   viewport: BuilderViewport;
+  pageViewMode: CanvasPageViewMode;
   zoom: number;
   isCanvasLocked: boolean;
   isLeftPanelCollapsed: boolean;
@@ -24,6 +27,7 @@ type BuilderState = {
 const initialState: BuilderState = {
   mode: "select",
   viewport: "desktop",
+  pageViewMode: "active-page",
   zoom: 100,
   isCanvasLocked: false,
   isLeftPanelCollapsed: false,
@@ -44,6 +48,9 @@ const builderSlice = createSlice({
     },
     setViewport: (state, action: PayloadAction<BuilderViewport>) => {
       state.viewport = action.payload;
+    },
+    setPageViewMode: (state, action: PayloadAction<CanvasPageViewMode>) => {
+      state.pageViewMode = action.payload;
     },
     setZoom: (state, action: PayloadAction<number>) => {
       state.zoom = clampZoom(action.payload);
@@ -96,6 +103,7 @@ const builderSlice = createSlice({
 
 export const {
   setMode,
+  setPageViewMode,
   setCanvasPan,
   setGridSize,
   setViewport,

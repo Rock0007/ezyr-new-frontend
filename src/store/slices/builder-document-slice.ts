@@ -47,6 +47,14 @@ type RenamePagePayload = {
   path: string;
 };
 
+type UpdatePageCanvasPositionPayload = {
+  pageId: string;
+  position: {
+    x: number;
+    y: number;
+  };
+};
+
 function insertChildId(
   childIds: string[],
   childId: string,
@@ -94,16 +102,18 @@ const builderDocumentSlice = createSlice({
       }
 
       if (node.parentId === null) {
-        const activeRootId = state.rootNodeIdsByPage[state.activePageId];
+        const ownerPageId = Object.keys(state.rootNodeIdsByPage).find(
+          (pageId) => state.rootNodeIdsByPage[pageId] === node.id,
+        );
 
-        if (activeRootId !== node.id) {
+        if (!ownerPageId) {
           return;
         }
 
         collectSubtreeIds(node.id, state.nodes).forEach((nodeId) => {
           delete state.nodes[nodeId];
         });
-        state.rootNodeIdsByPage[state.activePageId] = null;
+        state.rootNodeIdsByPage[ownerPageId] = null;
         return;
       }
 
@@ -154,7 +164,13 @@ const builderDocumentSlice = createSlice({
         return;
       }
 
-      state.pagesById[action.payload.page.id] = action.payload.page;
+      state.pagesById[action.payload.page.id] = {
+        ...action.payload.page,
+        canvas: action.payload.page.canvas ?? {
+          x: state.pageOrder.length * 1040,
+          y: 0,
+        },
+      };
       state.pageOrder.push(action.payload.page.id);
       state.rootNodeIdsByPage[action.payload.page.id] =
         action.payload.rootNode.id;
@@ -182,6 +198,18 @@ const builderDocumentSlice = createSlice({
 
       page.name = action.payload.name.trim() || page.name;
       page.path = action.payload.path.trim() || page.path;
+    },
+    updatePageCanvasPosition: (
+      state,
+      action: PayloadAction<UpdatePageCanvasPositionPayload>,
+    ) => {
+      const page = state.pagesById[action.payload.pageId];
+
+      if (!page) {
+        return;
+      }
+
+      page.canvas = action.payload.position;
     },
     deletePage: (state, action: PayloadAction<string>) => {
       if (!state.pagesById[action.payload] || state.pageOrder.length <= 1) {
@@ -283,16 +311,18 @@ const builderDocumentSlice = createSlice({
         }
 
         if (node.parentId === null) {
-          const activeRootId = state.rootNodeIdsByPage[state.activePageId];
+          const ownerPageId = Object.keys(state.rootNodeIdsByPage).find(
+            (pageId) => state.rootNodeIdsByPage[pageId] === node.id,
+          );
 
-          if (activeRootId !== node.id) {
+          if (!ownerPageId) {
             return;
           }
 
           collectSubtreeIds(node.id, state.nodes).forEach((nodeId) => {
             delete state.nodes[nodeId];
           });
-          state.rootNodeIdsByPage[state.activePageId] = null;
+          state.rootNodeIdsByPage[ownerPageId] = null;
           return;
         }
 
@@ -371,6 +401,7 @@ export const {
   setActivePage,
   setDragSession,
   setDropIndicator,
+  updatePageCanvasPosition,
   updateNodeProps,
   updateNodeStyle,
 } = builderDocumentSlice.actions;

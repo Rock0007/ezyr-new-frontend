@@ -8,10 +8,10 @@ type ProjectState = {
 
 const initialState: ProjectState = {
   activeProject: {
-    id: "ezyr-demo-project",
-    name: "Untitled Ezyr App",
+    id: "northstar-capital-os",
+    name: "Northstar Capital OS",
     status: "draft",
-    updatedAt: new Date(0).toISOString(),
+    updatedAt: "2026-07-04T00:00:00.000Z",
   },
   isDirty: false,
 };

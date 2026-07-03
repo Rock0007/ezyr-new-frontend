@@ -1,6 +1,13 @@
 "use client";
 
-import { Button, Divider, Layout, Segmented, Tooltip, Typography } from "antd";
+import {
+  Button,
+  Divider,
+  Layout,
+  Segmented,
+  Tooltip,
+  Typography,
+} from "antd";
 import {
   Bot,
   Cloud,
@@ -8,7 +15,6 @@ import {
   Laptop,
   Lock,
   PanelLeft,
-  PanelRight,
   Play,
   Redo2,
   Save,
@@ -16,6 +22,7 @@ import {
   Tablet,
   Undo2,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useAppDispatch } from "@/hooks/use-app-dispatch";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import {
@@ -23,13 +30,12 @@ import {
   setViewport,
   toggleCanvasLock,
   toggleLeftPanel,
-  toggleRightPanel,
 } from "@/store/slices/builder-slice";
 import type { BuilderMode, BuilderViewport } from "@/types/builder";
 
 const viewportOptions: Array<{
   value: BuilderViewport;
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
 }> = [
   { value: "desktop", icon: <Laptop size={15} />, title: "Desktop viewport" },
@@ -39,13 +45,8 @@ const viewportOptions: Array<{
 
 export function TopToolbar() {
   const dispatch = useAppDispatch();
-  const {
-    mode,
-    viewport,
-    isCanvasLocked,
-    isLeftPanelCollapsed,
-    isRightPanelCollapsed,
-  } = useAppSelector((state) => state.builder);
+  const { mode, viewport, isCanvasLocked, isLeftPanelCollapsed } =
+    useAppSelector((state) => state.builder);
   const { activeProject, isDirty } = useAppSelector((state) => state.project);
 
   return (
@@ -125,18 +126,6 @@ export function TopToolbar() {
         </Tooltip>
         <Tooltip title="Preview">
           <Button aria-label="Preview" icon={<Eye size={16} />} />
-        </Tooltip>
-        <Tooltip
-          title={
-            isRightPanelCollapsed ? "Expand properties" : "Collapse properties"
-          }
-        >
-          <Button
-            aria-label="Toggle properties panel"
-            icon={<PanelRight size={16} />}
-            type={isRightPanelCollapsed ? "primary" : "text"}
-            onClick={() => dispatch(toggleRightPanel())}
-          />
         </Tooltip>
         <Button icon={<Save size={16} />} type="primary">
           Save

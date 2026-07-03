@@ -2,6 +2,7 @@ import type { AppNode } from "@/schemas/app-spec";
 import {
   collectSubtreeIds,
   hydrateAppNode,
+  isDescendantOf,
 } from "@/features/builder/state/normalization";
 import type {
   BuilderClipboard,
@@ -14,7 +15,18 @@ export function createClipboard(
   selectedNodeIds: readonly string[],
   nodes: Record<string, NormalizedBuilderNode>,
 ): BuilderClipboard | null {
-  const rootIds = selectedNodeIds.filter((nodeId) => nodes[nodeId]);
+  const rootIds = selectedNodeIds.filter((nodeId) => {
+    if (!nodes[nodeId]) {
+      return false;
+    }
+
+    return !selectedNodeIds.some(
+      (candidateId) =>
+        candidateId !== nodeId &&
+        nodes[candidateId] &&
+        isDescendantOf(nodeId, candidateId, nodes),
+    );
+  });
 
   if (rootIds.length === 0) {
     return null;

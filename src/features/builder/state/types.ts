@@ -15,6 +15,10 @@ export type BuilderPage = {
   id: string;
   name: string;
   path: string;
+  canvas?: {
+    x: number;
+    y: number;
+  };
 };
 
 export type BuilderDocumentState = {

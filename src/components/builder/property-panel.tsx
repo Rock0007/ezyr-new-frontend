@@ -46,7 +46,13 @@ export function PropertyPanel() {
   const defaultActivePropertyGroups = propertyGroups
     .filter(
       (group, index) =>
-        index < 4 || group.category === "Scroll" || group.category === "Layout",
+        index < 4 ||
+        group.category === "Appearance" ||
+        group.category === "Flex alignment" ||
+        group.category === "Layout" ||
+        group.category === "Scroll" ||
+        group.category === "Spacing" ||
+        group.category === "Typography",
     )
     .map((group) => group.category);
 
@@ -155,9 +161,15 @@ export function PropertyPanel() {
                           const Editor = editor?.component;
 
                           return (
-                            <Form.Item label={property.label} key={property.id}>
+                            <Form.Item
+                              htmlFor={property.id}
+                              label={property.label}
+                              key={property.id}
+                            >
                               {Editor ? (
                                 <Editor
+                                  id={property.id}
+                                  label={property.label}
                                   value={readPropertyValue(
                                     selectedAppNode,
                                     property,
@@ -182,6 +194,7 @@ export function PropertyPanel() {
                       </div>
                     ),
                   }))}
+                  key={selectedAppNode.id}
                 />
               </Form>
             ) : (
